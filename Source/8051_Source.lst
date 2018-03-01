@@ -1,0 +1,2752 @@
+8051_Source                                                                                                             PAGE 1
+                         1     ;****************************************
+                         2     ;*Author: Michael Goberling             *
+                         3     ;*Course: 4330 Microprocessor Design    *
+                         4     ;*Assignment: 8051 Source Code          *
+                         5     ;*Due date: 5/2/17                      *
+                         6     ;*Revision: 1.46                        *
+                         7     ;****************************************
+                         8
+                         9
+                        10                     org 0h
+0000 8000               11                     sjmp    start
+                        12     ;========================================================
+                        13     ;| Data equates                                         |
+                        14     ;========================================================
+  0010                  15     io_temp         EQU     10h
+  0020                  16     io_sevenseg     EQU     20h
+  0040                  17     io_rtc          EQU     40h
+  0080                  18     io_lcd          EQU     80h
+                        19
+  0001                  20     lcd_clear       equ     00000001b
+  0002                  21     lcd_home        equ     00000010b
+  003C                  22     lcd_fn_set      equ     00111100b
+  000F                  23     lcd_onoff_cntl  equ     00001111b
+  0006                  24     lcd_entry_set   equ     00000110b
+  0081                  25     lcd_ddram       equ     10000001b
+                        26
+  00B2                  27     RS              EQU     P3.2
+  00B1                  28     RW              EQU     P3.1
+                        29
+  0090                  30     keypad          EQU     P1
+                        31
+                        32
+                        33     ;================================================================================
+                        34     ;| Start of the program                                                         |
+                        35     ;================================================================================
+                        36     start:
+0002 1208A7             37                     LCALL   LCD_INIT                        ;LCD initialization
+                        38
+0005 7820               39                     MOV     R0, #IO_SEVENSEG                ;clear 7 segment
+0007 74FF               40                     MOV     A, #11111111B
+0009 120B9E             41                     LCALL   IOTOGGLE
+                        42
+000C 12081F             43                     LCALL   wakeUp                          ;7 segment initialization
+000F 1205F2             44     relogin:        LCALL   login                           ;waits for a user to press 1 to continue
+0012 120642             45                     LCALL   getPasscode                     ;user enters passcode that allows them access
+0015 1208D4             46                     LCALL   RTC_INIT                        ;initialize the RTC so that login time is kep
+                        47
+0018 120888             48     monitormenu:    LCALL   displayMenu                     ;Display menu options
+                        49
+                        50     monitor:
+                        51                     ;LCALL  flash7seg                       ;quickly flash status of 7 segment
+001B 120576             52                     LCALL   getTemp                         ;temperature in A now
+001E 120524             53                     LCALL   getRTC                          ;update time by reading RTC regs
+0021 1205DB             54                     LCALL   hexToAscii
+0024 1205C5             55                     LCALL   printTemp                       ;print values in R6 and R7 to LCD
+                        56
+                        57                     ;42h = move
+                        58                     ;44h = dump
+                        59                     ;45h = edit
+                        60                     ;46h = find
+0027 1207C3             61                     LCALL   pollKeypad
+                        62
+002A B44217             63                     CJNE    A, #42H, compare1                       ;check for move, or 'B'
+002D 1209BF             64                     LCALL   CLEAR_LCD                               ;if found, clear lcd
+0030 900EB5             65                     MOV     DPTR, #test1                            ;print selection string
+0033 120B2C             66                     LCALL   printString
+0036 120B8E             67                     LCALL   halfseconddelay                         ;leave it up for some time
+0039 1209BF             68                     LCALL   CLEAR_LCD                               ;clear lcd for entering menu
+003C 1200C4             69                     LCALL   promptMove
+003F 120172             70                     LCALL   MOVE                                    ;go to main move function
+0042 80D4               71                     sjmp    monitormenu                             ;jump back
+                        72     compare1:
+0044 B44417             73                     CJNE    A, #44H, compare2                       ;check for dump, or 'D'
+0047 1209BF             74                     LCALL   CLEAR_LCD
+004A 900EC4             75                     MOV     DPTR, #test2
+004D 120B2C             76                     LCALL   printString
+0050 120B8E             77                     LCALL   halfseconddelay
+0053 1209BF             78                     LCALL   CLEAR_LCD
+0056 1201A0             79                     LCALL   promptDump
+0059 12021B             80                     LCALL   DUMP
+005C 80BA               81                     sjmp    monitormenu
+                        82     compare2:
+005E B44517             83                     CJNE    A, #45H, compare3                       ;check for edit, or 'E'
+0061 1209BF             84                     LCALL   CLEAR_LCD
+0064 900ED3             85                     MOV     DPTR, #test3
+0067 120B2C             86                     LCALL   printString
+006A 120B8E             87                     LCALL   halfseconddelay
+006D 1209BF             88                     LCALL   CLEAR_LCD
+0070 120324             89                     LCALL   PROMPTEDIT
+0073 120360             90                     LCALL   EDIT
+0076 80A0               91                     SJMP    monitormenu
+                        92     compare3:
+0078 B44617             93                     CJNE    A, #46H, compare4                       ;check for find, or 'F'
+007B 1209BF             94                     LCALL   CLEAR_LCD
+007E 900EE2             95                     MOV     DPTR, #test4
+0081 120B2C             96                     LCALL   printString
+0084 120B8E             97                     LCALL   halfseconddelay
+0087 1209BF             98                     LCALL   CLEAR_LCD
+008A 120414             99                     LCALL   PROMPTFIND
+008D 1204A9            100                     LCALL   FIND
+0090 8086              101                     SJMP    monitormenu
+                       102     compare4:
+0092 B43112            103                     CJNE    A, #31H, compare5                       ;check for logout, or '1'
+0095 1209BF            104                     LCALL   CLEAR_LCD
+0098 900C1F            105                     MOV     DPTR, #goodbye
+009B 120B2C            106                     LCALL   printString
+009E 120B8E            107                     LCALL   halfseconddelay
+00A1 1209BF            108                     LCALL   CLEAR_LCD
+00A4 02000F            109                     LJMP    relogin
+                       110     compare5:
+00A7 B43115            111                     CJNE    A, #31H, monitorLJMP                    ;check for logout, or '1'
+00AA 1209BF            112                     LCALL   CLEAR_LCD
+00AD 900EF1            113                     MOV     DPTR, #sevensegmsg
+00B0 120B2C            114                     LCALL   printString
+00B3 120B8E            115                     LCALL   halfseconddelay
+00B6 1209BF            116                     LCALL   CLEAR_LCD
+00B9 020748            117                     LJMP    sevenseg
+00BC 020018            118                     LJMP    monitormenu
+                       119
+00BF 02001B            120     monitorLJMP:    LJMP    monitor
+00C2 80FE              121     FOREVER:        SJMP    FOREVER
+                       122     ;================================================================================
+                       123     ;| prompt for value between 30h and 7Fh to not mess with registers              |
+                       124     ;================================================================================
+                       125     promptMove:
+                       126
+00C4 1209BF            127     bdata:          Lcall   clear_lcd
+00C7 900CA4            128                     mov     DPTR, #bSource          ;print menu message
+00CA 120B2C            129                     LCALL   printString
+                       130
+00CD 900C73            131                     MOV     DPTR, #DIGITMSG
+00D0 120A1A            132                     LCALL   PUT_LINE2
+00D3 120B2C            133                     LCALL   PRINTSTRING
+                       134
+00D6 120A67            135                     LCALL   PUT_LINE3_CB
+00D9 120AF0            136                     LCALL   GETBYTE                 ;2 byte block size will be in R1
+                       137
+00DC E9                138                     mov     A, R1
+00DD FA                139                     mov     R2, A                   ;XX00H IN R2
+                       140
+00DE 120AF0            141                     LCALL   GETBYTE
+                       142
+00E1 E9                143                     MOV     A, R1
+00E2 FB                144                     MOV     R3, A                   ;00XXH IN R3
+                       145
+00E3 900DB8            146     CONT27:         MOV     DPTR, #VERIFYINPUT
+00E6 120A86            147                     LCALL   PUT_LINE4
+00E9 120B2C            148                     LCALL   PRINTSTRING
+00EC 120754            149                     LCALL   PROMPTKEYPAD
+                       150
+00EF B44103            151                     CJNE    A, #41H, CONT26                         ;IF THEY HIT 'A' AND ACCEPT
+00F2 0200FB            152                     LJMP    REDO                                    ;MOVE FORWARD
+                       153
+00F5 B444EB            154     CONT26:         CJNE    A, #44H, CONT27                         ;IF THEY HIT 'D' AND WANT TO REDO
+00F8 0200C4            155                     LJMP    BDATA
+                       156
+00FB 1209BF            157     REDO:           LCALL   clear_lcd
+00FE 900C93            158                     mov     DPTR, #bblock
+0101 120B2C            159                     LCALL   printString
+                       160
+0104 900C73            161                     MOV     DPTR, #DIGITMSG
+0107 120A1A            162                     LCALL   PUT_LINE2
+010A 120B2C            163                     LCALL   PRINTSTRING
+                       164
+010D 120A67            165                     LCALL   PUT_LINE3_CB
+0110 120AF0            166                     LCALL   GETBYTE                 ;Source address will be in R1
+0113 E9                167                     mov     A, R1
+0114 FC                168                     mov     R4, A                   ;XX00H IN R4
+                       169
+0115 120AF0            170                     LCALL   GETBYTE
+0118 E9                171                     MOV     A, R1
+0119 FD                172                     MOV     R5, A                   ;00XXH IN R5
+                       173
+011A 900DB8            174     CONT29:         MOV     DPTR, #VERIFYINPUT
+011D 120A86            175                     LCALL   PUT_LINE4
+0120 120B2C            176                     LCALL   PRINTSTRING
+0123 120754            177                     LCALL   PROMPTKEYPAD
+                       178
+0126 B44103            179                     CJNE    A, #41H, CONT28         ;IF THEY HIT 'A' AND ACCEPT
+0129 020132            180                     LJMP    CONT32                                  ;MOVE FORWARD
+                       181
+012C B444EB            182     CONT28:         CJNE    A, #44H, CONT29                         ;IF THEY HIT 'D' AND WANT TO REDO
+012F 0200FB            183                     LJMP    REDO
+                       184
+0132 BD0005            185     CONT32:         CJNE    R5, #0, CONT6
+0135 BC0002            186                     CJNE    R4, #0, CONT6           ;CANT HAVE 0 AS THE BLOCK SIZE
+0138 80C1              187                     SJMP    REDO
+                       188
+013A 1209BF            189     CONT6:          LCALL   clear_lcd
+013D 900CB7            190                     mov     DPTR, #bDest
+0140 120B2C            191                     LCALL   printString
+                       192
+0143 900C73            193                     MOV     DPTR, #DIGITMSG
+0146 120A1A            194                     LCALL   PUT_LINE2
+0149 120B2C            195                     LCALL   PRINTSTRING
+                       196
+014C 120A67            197                     LCALL   PUT_LINE3_CB
+014F 120AF0            198                     LCALL   GETBYTE                 ;Destination address now will be in R1
+0152 E9                199                     mov     A, R1
+0153 FE                200                     mov     R6, A                   ;XX00H IN R6
+                       201
+0154 120AF0            202                     LCALL   GETBYTE
+0157 E9                203                     MOV     A, R1
+0158 FF                204                     MOV     R7, A                   ;00XXH IN R7
+                       205
+0159 900DB8            206     CONT31:         MOV     DPTR, #VERIFYINPUT
+015C 120A86            207                     LCALL   PUT_LINE4
+015F 120B2C            208                     LCALL   PRINTSTRING
+0162 120754            209                     LCALL   PROMPTKEYPAD
+                       210
+0165 B44103            211                     CJNE    A, #41H, CONT30                         ;IF THEY HIT 'A' AND ACCEPT
+0168 020171            212                     LJMP    ENDPROMPTMOVE                           ;MOVE FORWARD
+                       213
+016B B444EB            214     CONT30:         CJNE    A, #44H, CONT31                         ;IF THEY HIT 'D' AND WANT TO REDO
+016E 02013A            215                     LJMP    CONT6
+                       216
+                       217     ENDPROMPTMOVE:
+0171 22                218                     RET
+                       219     ;================================================================================
+                       220     ;| Copy a block of memory to another location                                   |
+                       221     ;================================================================================
+                       222     ;SOURCE R2R3H
+                       223     ;BLOCK  R4R5H
+                       224     ;DEST   R6R7H
+                       225
+                       226     MOVE:
+0172 C2B0              227                     CLR     P3.0
+                       228
+                       229     back:
+0174 8A83              230                     mov     DPH, R2
+0176 8B82              231                     mov     DPL, R3                 ;DPTR NOW CONTAINS SOURCE ADDR
+0178 E0                232                     movx    A, @DPTR
+                       233
+0179 8E83              234                     mov     DPH, R6
+017B 8F82              235                     mov     DPL, R7         ;DPTR NOW CONTAINS DEST ADDR
+017D F0                236                     movx    @DPTR, A
+                       237
+017E 0B                238                     inc     R3                      ;INC LOWER BYTES
+017F 0F                239                     inc     R7
+                       240
+0180 1D                241                     DEC     R5                      ;DEC LOWER BYTE OF BLOCK SIZE
+                       242
+0181 BB0001            243                     CJNE    R3, #00H, CONT4         ;IF LOWER BYTE OF SOURCE IS 00H AFTER INC
+0184 0A                244                     INC     R2                      ;INC HIGH BYTE OF SOURCE
+                       245     CONT4:
+0185 BF0001            246                     CJNE    R7, #00H, CONT5         ;IF LOWER BYTE OF DEST IS 00H AFTER INC
+0188 0E                247                     INC     R6                      ;INC HIGH BYTE OF DEST
+                       248     CONT5:
+0189 BDFF01            249                     CJNE    R5, #0FFH, CONT3        ;IF R7 IS FFH AFTER DEC, THEN DEC THE HIGH BYTE
+018C 1C                250                     DEC     R4                      ;HERE
+                       251     CONT3:
+                       252                                                     ;ELSE CONTINUE THE PROGRAM
+018D BC00E4            253                     CJNE    R4, #0, BACK            ;IF HIGH BYTE IS NOT ZERO, CONTINUE
+0190 BD00E1            254                     CJNE    R5, #0, BACK            ;IF LOW BYTE IS NOT ZERO, CONTINUE
+                       255                                                     ;ELSE, IF BOTH ARE ZERO, THEN DONE
+0193 1209BF            256                     LCALL   clear_lcd
+0196 900CC9            257                     mov     DPTR, #bdone
+0199 120B2C            258                     Lcall   printString
+019C 120B8E            259                     LCALL   halfseconddelay
+                       260
+019F 22                261                     RET
+                       262     ;================================================================================
+                       263     ;| prompt for values to show a given block of memory                            |
+                       264     ;================================================================================
+                       265     promptDump:
+01A0 1209BF            266                     LCALL   clear_lcd
+01A3 900CA4            267                     mov     DPTR, #bsource
+01A6 120B2C            268                     LCALL   printString
+                       269
+01A9 900C73            270                     MOV     DPTR, #DIGITMSG
+01AC 120A1A            271                     LCALL   PUT_LINE2
+01AF 120B2C            272                     LCALL   PRINTSTRING
+                       273
+01B2 120A67            274                     LCALL   PUT_LINE3_CB
+01B5 120AF0            275                     LCALL   GETBYTE                 ;Start address will be in R1
+01B8 E9                276                     mov     A, R1
+01B9 FC                277                     mov     R4, A                   ;XX00H IN DPH (R4)
+                       278
+01BA 120AF0            279                     LCALL   GETBYTE
+01BD E9                280                     MOV     A, R1
+01BE FD                281                     MOV     R5, A                   ;00XXH IN DPL (R5)
+                       282
+01BF 900DB8            283     CONT35:         MOV     DPTR, #VERIFYINPUT
+01C2 120A86            284                     LCALL   PUT_LINE4
+01C5 120B2C            285                     LCALL   PRINTSTRING
+01C8 120754            286                     LCALL   PROMPTKEYPAD
+                       287
+01CB B44103            288                     CJNE    A, #41H, CONT34         ;IF THEY HIT 'A' AND ACCEPT
+01CE 0201D7            289                     LJMP    BSIZEPROMPT                             ;MOVE FORWARD
+                       290
+01D1 B444EB            291     CONT34:         CJNE    A, #44H, CONT35                         ;IF THEY HIT 'D' AND WANT TO REDO
+01D4 0201A0            292                     LJMP    PROMPTDUMP
+                       293
+01D7 1209BF            294     BSIZEPROMPT:    LCALL   clear_lcd
+01DA 900C93            295                     mov     DPTR, #bBlock
+01DD 120B2C            296                     LCALL   printString
+                       297
+01E0 900C73            298                     MOV     DPTR, #DIGITMSG
+01E3 120A1A            299                     LCALL   PUT_LINE2
+01E6 120B2C            300                     LCALL   PRINTSTRING
+                       301
+01E9 120A67            302                     LCALL   PUT_LINE3_CB
+                       303
+01EC 120AF0            304                     LCALL   GETBYTE                 ;Block size will be in R1
+01EF E9                305                     mov     A, R1
+01F0 FA                306                     mov     R2, A                   ;XX00H WILL BE IN R2
+                       307
+01F1 120AF0            308                     LCALL   GETBYTE
+01F4 E9                309                     MOV     A, R1
+01F5 FB                310                     MOV     R3, A                   ;00XXH WILL BE IN R3
+                       311
+01F6 900DB8            312     CONT37:         MOV     DPTR, #VERIFYINPUT
+01F9 120A86            313                     LCALL   PUT_LINE4
+01FC 120B2C            314                     LCALL   PRINTSTRING
+01FF 120754            315                     LCALL   PROMPTKEYPAD
+                       316
+0202 B44103            317                     CJNE    A, #41H, CONT36         ;IF THEY HIT 'A' AND ACCEPT
+0205 02020E            318                     LJMP    CONT33          ;MOVE FORWARD
+                       319
+0208 B444EB            320     CONT36:         CJNE    A, #44H, CONT37                         ;IF THEY HIT 'D' AND WANT TO REDO
+020B 0201D7            321                     LJMP    BSIZEPROMPT
+                       322
+020E BA0006            323     CONT33:         CJNE    R2, #0, CONT14
+0211 BB0003            324                     CJNE    R3, #0, CONT14
+0214 0201D7            325                     LJMP    BSIZEPROMPT
+                       326     CONT14:
+0217 1209BF            327                     LCALL   CLEAR_LCD
+021A 22                328                     RET
+                       329     ;================================================================================
+                       330     ;| show the contents of a given block of memory                                 |
+                       331     ;================================================================================
+                       332     ;BLOCK SIZE                     R2R3H
+                       333     ;CURRENT                        R4R5H
+                       334     ;Printed to Line                R0H
+                       335     ;PAGE #                         R6H
+                       336     ;# PRINTED TO LCD               R7H
+                       337     ;       ?                       R1H
+                       338
+                       339     Dump:
+021B C2B0              340                     CLR     P3.0
+021D 7E00              341                     MOV     R6, #0                  ;MAKE PAGE # 0 AS ORIGIN
+021F 7F00              342                     MOV     R7, #0                  ; # PRINTED TO LCD
+0221 7800              343                     MOV     R0, #0
+                       344
+                       345     loop:
+0223 8C83              346                     MOV     DPH, R4
+0225 8D82              347                     MOV     DPL, R5
+0227 E0                348                     MOVX    A, @DPTR                ;(R4R5h)
+0228 F5F0              349                     MOV     B, A
+022A 54F0              350                     anl     A, #0f0h
+022C 03                351                     rr      A
+022D 03                352                     rr      A
+022E 03                353                     rr      A
+022F 03                354                     rr      A
+0230 F9                355                     mov     R1, A                   ;To save the raw value
+0231 C3                356                     CLR     C
+0232 940A              357                     SUBB    A, #0Ah                 ;check if letter
+0234 5008              358                     jnc     letter3
+0236 E9                359                     mov     A, R1                   ;Reload A
+0237 4430              360                     orl     A, #30h                 ;Should have ascii number value now(03h --> 33h)
+0239 120B7B            361                     LCALL   printChar               ;put character to LCD
+023C 8008              362                     sjmp    next
+023E E9                363     letter3:        mov     A, R1
+023F 4430              364                     orl     A, #30h                 ;ascii non-normalized
+0241 2407              365                     add     A, #07h                 ;ascii normalized (3Fh --> 46h)
+0243 120B7B            366                     LCALL   printChar
+0246 E5F0              367     next:           mov     A, B
+0248 540F              368                     anl     A, #0fh
+024A F9                369                     mov     R1, A                   ;to copy before check
+024B C3                370                     CLR     C
+024C 940A              371                     subb    A, #0Ah
+024E 5008              372                     jnc     letter4
+0250 E9                373                     mov     A, R1
+0251 4430              374                     orl     A, #30h
+0253 120B7B            375                     LCALL   printChar
+0256 8008              376                     sjmp    finish
+0258 E9                377     letter4:        mov     A, R1
+0259 4430              378                     orl     A, #30h
+025B 2407              379                     add     A, #07h
+025D 120B7B            380                     LCALL   printChar               ;print the normalized second character
+0260 7420              381     finish:         mov     A, #20h
+0262 120B7B            382                     LCALL   printChar               ;print space
+                       383
+                       384
+0265 08                385                     INC     R0                      ;INC AMOUNT PRINTED TO LINE
+0266 0D                386                     INC     R5                      ;INC CURRENT ADDRESS
+0267 0F                387                     INC     R7                      ;INC AMOUNT PRINTED TO LCD
+                       388
+                       389
+0268 BD0001            390                     CJNE    R5, #00H, CONT13
+026B 0C                391                     INC     R4                      ;INC HIGH BYTE IF LOW BYTE OV
+                       392     CONT13:
+026C 1B                393                     DEC     R3                      ;DEC LOW BYTE OF BLOCK SIZE
+026D BBFF01            394                     CJNE    R3, #0FFH, CONT15
+0270 1A                395                     DEC     R2                      ;DEC HIGH BYTE IF LOW BYTE UV
+                       396     CONT15:
+                       397
+0271 BA0006            398                     CJNE    R2, #0, CONT11          ;If maximum block size hasnt been reached, then move
+0274 BB0003            399                     CJNE    R3, #0, CONT11
+0277 020285            400                     LJMP    DONE                    ;IF BOTH HIGH AND LOW BYTE OF BLOCK SIZE 0, JUMP
+                       401                                                     ;TO DONE AND PROMPT
+                       402     CONT11:
+027A B806A6            403                     CJNE    R0, #6, LOOP            ;IF LINE ISNT FILLED, KEEP PRINTING
+027D 120A1A            404                     LCALL   PUT_LINE2               ;OTHERWISE, MOVE TO SECOND LINE
+0280 7800              405                     MOV     R0, #0                  ;CLEAR AMOUNT PRINTED TO LINE, AND PRINT NEXT LINE
+0282 BF0C9E            406                     CJNE    R7, #12, LOOP           ;CHECK IF TOTAL AMOUNT PRINTED TO LCD IS 12
+                       407
+                       408     DONE:
+0285 8C83              409                     MOV     DPH, R4
+0287 8D82              410                     MOV     DPL, R5
+                       411
+0289 C083              412                     PUSH    DPH
+028B C082              413                     PUSH    DPL
+                       414
+028D 900D85            415                     MOV     DPTR, #DUMPPROMPT
+0290 120A50            416                     LCALL   PUT_LINE3
+0293 120B2C            417                     LCALL   PRINTSTRING
+                       418
+0296 900D8F            419                     MOV     DPTR, #DUMPPROMPT2
+0299 120A86            420                     LCALL   PUT_LINE4
+029C 120B2C            421                     LCALL   PRINTSTRING
+                       422
+029F D082              423                     POP     DPL
+02A1 D083              424                     POP     DPH
+                       425
+                       426                     ;LCALL  PUTDUMPADDR             ;PRINT NEXT ADDRESS
+                       427
+02A3 120754            428     DONE3:          LCALL   PROMPTKEYPAD            ;WHEN BLOCK SIZE IS FULL, PROMPT,
+                       429                                                     ;WHEN LCD IS FILLED, PROMPT
+02A6 B43203            430                     CJNE    A, #32H, CONT16         ;PROMPT FOR EXIT, IF NOT PRESSED, CHECK '0'
+02A9 020304            431                     LJMP    ENDDUMP
+                       432
+02AC B43009            433     CONT16:         CJNE    A, #30H, CONT17         ;TRY TO GO TO NEXT PAGE, IF NOT PRESSED, CHECK '1'
+02AF BA000F            434                     CJNE    R2, #0, NEXTPAGE        ;If maximum block size has been reached, then DONT GO
+02B2 BB000C            435                     CJNE    R3, #0, NEXTPAGE        ;TO NEXT PAGE
+02B5 0202A3            436                     LJMP    DONE3                   ;IF BLOCK SIZE REACHED, INVALID KEY PRESS
+                       437
+02B8 B431E8            438     CONT17:         CJNE    A, #31H, DONE3          ;TRY TO GO TO PREVIOUS PAGE, IF NOT PRESSED, REPROMPT
+02BB BE000C            439                     CJNE    R6, #0, PREVPAGE        ;CHECK PAGE ZER0
+02BE 0202A3            440                     LJMP    DONE3                   ;IF PAGE 0, REPROMPT
+                       441
+02C1 1209BF            442     NEXTPAGE:       LCALL   CLEAR_LCD
+02C4 0E                443                     INC     R6                      ;INC PAGE #
+02C5 7F00              444                     MOV     R7, #0
+02C7 020223            445                     LJMP    LOOP
+                       446
+02CA 1209BF            447     PREVPAGE:       LCALL   CLEAR_LCD
+02CD 7800              448                     MOV     R0, #0                  ;RESET AMOUNT PRINTED TO LINE
+02CF 1E                449                     DEC     R6                      ;DEC PAGE #
+                       450
+02D0 EB                451                     MOV     A, R3                   ;LOW BYTE OF BLOCK SIZE
+02D1 C3                452                     CLR     C
+02D2 2F                453                     ADD     A, R7                   ;REUPDATE BLOCK SIZE
+02D3 4008              454                     JC      INCHBYTE
+02D5 C3                455                     CLR     C
+02D6 240C              456                     ADD     A, #12                  ;ADD LAST PAGE AMOUNT
+02D8 4009              457                     JC      INCHBYTE2
+02DA FB                458                     MOV     R3, A                   ;UPDATE LOW BYTE OF BLOCK
+02DB 8008              459                     SJMP    CONT18
+                       460
+                       461
+02DD 0A                462     INCHBYTE:       INC     R2                      ;INC HIGH BYTE IF CARRY ON R7 ADD
+02DE 240C              463                     ADD     A, #12
+02E0 FB                464                     MOV     R3, A                   ;UPDATE LOW BYTE OF BLOCK
+02E1 8002              465                     SJMP    CONT18
+                       466
+02E3 0A                467     INCHBYTE2:      INC     R2                      ;INC HIGH BYTE IF CARRY ON 12 ADD
+02E4 FB                468                     MOV     R3, A                   ;UPDATE LOW BYTE OF BLOCK
+                       469
+02E5 ED                470     CONT18:         MOV     A, R5                   ;MOVE LOW BYTE OF CURRENT ADDRESS
+02E6 C3                471                     CLR     C
+02E7 940C              472                     SUBB    A, #12
+02E9 400A              473                     JC      DECHBYTE                ;NO CARRY ON FIRST SUBB
+02EB C3                474                     CLR     C
+02EC 9F                475                     SUBB    A, R7                   ;SUBB CURRENT PAGE AMOUNT
+02ED 400E              476                     JC      DECHBYTE2
+02EF FD                477                     MOV     R5, A
+02F0 7F00              478                     MOV     R7, #0                  ;clear amount printed to page
+02F2 020223            479                     LJMP    LOOP
+                       480
+                       481     DECHBYTE:
+02F5 1C                482                     DEC     R4                      ;CARRY ON FIRST SUBB, UPPER BYTE UPDATED
+02F6 9F                483                     SUBB    A, R7                   ;SUBB CURRENT PAGE AMOUNT
+02F7 FD                484                     MOV     R5, A
+02F8 7F00              485                     MOV     R7, #0                  ;clear amount printed to page
+02FA 020223            486                     LJMP    LOOP                    ;REPRINT AND REPROMPT WITH NEW ADDRESS
+                       487
+02FD 1C                488     DECHBYTE2:      DEC     R4                      ;PREVIOUS ADDRESS
+02FE FD                489                     MOV     R5, A
+02FF 7F00              490                     MOV     R7, #0                  ;CLEAR AMOUNT PRINTED TO PAGE
+0301 020223            491                     LJMP    LOOP
+                       492     ENDDUMP:
+0304 22                493                     RET
+                       494     ;================================================================================
+                       495     ;| PRINT ADDRESS FOR DUMP                                               |
+                       496     ;================================================================================
+                       497     PUTDUMPADDR:
+0305 120AC4            498                     LCALL   PUT_ADDR
+0308 7428              499                     mov     A, #28h                         ;print '('
+030A 120B7B            500                     LCALL   printChar
+                       501
+030D 8C83              502                     MOV     DPH, R4                         ;PUT SAVED DPH IN DPH
+030F EC                503                     MOV     A, R4
+0310 120584            504                     LCALL   PRINTADDR                       ;printAddr will print HIGH BYTE
+                       505
+0313 8D82              506                     MOV     DPL, R5                         ;PUT SAVED DPL IN DPL
+0315 ED                507                     MOV     A, R5                           ;PRINTADRR WILL PRINT LOW BYTE
+0316 120584            508                     LCALL   PRINTADDR
+                       509
+0319 7468              510                     mov     A, #68h                         ;print 'h'
+031B 120B7B            511                     LCALL   printChar
+                       512
+031E 7429              513                     mov     A, #29h                         ;print ')'
+0320 120B7B            514                     LCALL   printChar
+                       515
+0323 22                516                     RET
+                       517     ;================================================================================
+                       518     ;| Prompt for edit values                                                       |
+                       519     ;================================================================================
+                       520     promptEdit:
+                       521
+0324 1209BF            522                     LCALL   clear_lcd
+0327 900CD8            523                     mov     DPTR, #eSource
+032A 120B2C            524                     LCALL   printString
+                       525
+032D 900C73            526                     MOV     DPTR, #DIGITMSG
+0330 120A1A            527                     LCALL   PUT_LINE2
+0333 120B2C            528                     LCALL   PRINTSTRING
+                       529
+0336 120A67            530                     LCALL   PUT_LINE3_CB
+                       531
+0339 120AF0            532     bData1:         LCALL   GETBYTE                 ;Source address will be in R1
+033C E9                533                     mov     A, R1
+033D F583              534                     mov     DPH, A                  ;DPH NOW XX00H
+033F FB                535                     MOV     R3, A                   ;SAVE DPH IN R3
+                       536
+0340 120AF0            537                     LCALL   GETBYTE
+0343 E9                538                     MOV     A, R1
+0344 F582              539                     MOV     DPL, A                  ;DPL NOW 00XXH
+0346 FC                540                     MOV     R4, A                   ;SAVE DPL IN R4
+                       541
+0347 900DB8            542     CONT40:         MOV     DPTR, #VERIFYINPUT
+034A 120A86            543                     LCALL   PUT_LINE4
+034D 120B2C            544                     LCALL   PRINTSTRING
+0350 120754            545                     LCALL   PROMPTKEYPAD
+                       546
+0353 B44103            547                     CJNE    A, #41H, CONT39         ;IF THEY HIT 'A' AND ACCEPT
+0356 02035F            548                     LJMP    CONT38                  ;MOVE FORWARD
+                       549
+0359 B444EB            550     CONT39:         CJNE    A, #44H, CONT40         ;IF THEY HIT 'D' AND WANT TO REDO
+035C 020324            551                     LJMP    PROMPTEDIT
+                       552
+                       553     CONT38:
+                       554
+035F 22                555             here12: RET
+                       556     ;================================================================================
+                       557     ;| edit byte by byte starting at a location                                     |
+                       558     ;================================================================================
+                       559     edit:
+0360 C2B0              560                     CLR     P3.0
+                       561
+0362 1209BF            562                     LCALL   clear_lcd
+0365 7428              563                     mov     A, #28h                         ;print '('
+0367 120B7B            564                     LCALL   printChar
+                       565
+036A 8B83              566                     MOV     DPH, R3                         ;PUT SAVED DPH IN DPH
+036C EB                567                     MOV     A, R3
+036D 120584            568                     LCALL   PRINTADDR                       ;printAddr will print HIGH BYTE
+                       569
+0370 8C82              570                     MOV     DPL, R4                         ;PUT SAVED DPL IN DPL
+0372 EC                571                     MOV     A, R4                           ;PRINTADRR WILL PRINT LOW BYTE
+0373 120584            572                     LCALL   PRINTADDR
+                       573
+0376 7468              574                     mov     A, #68h                         ;print 'h'
+0378 120B7B            575                     LCALL   printChar
+                       576
+037B 7429              577                     mov     A, #29h                         ;print ')'
+037D 120B7B            578                     LCALL   printChar
+                       579
+0380 743A              580                     mov     A, #3Ah                         ;print ':'
+0382 120B7B            581                     LCALL   printChar
+                       582
+0385 7420              583                     mov     A, #20h                         ;print space
+0387 120B7B            584                     LCALL   printchar
+                       585
+038A 120B37            586                     LCALL   printByte                       ;print the byte
+                       587
+038D 120A1A            588                     LCALL   PUT_LINE2                       ;Go to next line
+                       589
+0390 C083              590                     PUSH    DPH
+0392 C082              591                     PUSH    DPL
+                       592
+0394 900CFC            593                     mov     DPTR, #replace                  ;Point dptr to replace request string
+0397 120B2C            594                     LCALL   PRINTSTRING
+                       595
+039A 900C84            596                     MOV     DPTR, #DIGITMSG1
+039D 120A50            597                     LCALL   PUT_LINE3
+03A0 120B2C            598                     LCALL   PRINTSTRING
+                       599
+03A3 120AA5            600                     LCALL   PUT_LINE4_CB
+                       601
+03A6 D082              602                     POP     DPL
+03A8 D083              603                     POP     DPH
+                       604
+03AA 120AF0            605                     LCALL   GETBYTE                         ;New byte should be in R1
+                       606
+03AD E9                607                     MOV     A, R1                           ;new byte is in A
+03AE 8B83              608                     MOV     DPH, R3
+03B0 8C82              609                     MOV     DPL, R4
+03B2 F0                610                     MOVX    @DPTR, A                        ;move new byte to source address location
+                       611
+03B3 1209BF            612                     LCALL   clear_lcd
+03B6 7428              613                     mov     A, #28h                         ;print '('
+03B8 120B7B            614                     LCALL   printChar
+                       615
+03BB 8B83              616                     MOV     DPH, R3
+03BD E583              617                     MOV     A, DPH
+03BF 120584            618                     LCALL   PRINTADDR                       ;printAddr will print HIGH BYTE
+                       619
+03C2 8C82              620                     MOV     DPL, R4
+03C4 E582              621                     MOV     A, DPL                          ;PRINTADRR WILL PRINT LOW BYTE
+03C6 120584            622                     LCALL   PRINTADDR
+                       623
+03C9 7468              624                     mov     A, #68h                         ;print 'h'
+03CB 120B7B            625                     LCALL   printChar
+                       626
+03CE 7429              627                     mov     A, #29h                         ;print ')'
+03D0 120B7B            628                     LCALL   printChar
+                       629
+03D3 743A              630                     mov     A, #3Ah                         ;print ':'
+03D5 120B7B            631                     LCALL   printChar
+                       632
+03D8 7420              633                     mov     A, #20h                         ;print space
+03DA 120B7B            634                     LCALL   printchar
+                       635
+03DD 120B37            636                     LCALL   printByte                       ;print the updated byte
+                       637
+03E0 7468              638                     mov     A, #68h
+03E2 120B7B            639                     LCALL   printchar
+                       640
+03E5 120A1A            641                     LCALL   PUT_LINE2
+03E8 900D1F            642                     mov     DPTR, #user1
+03EB 120B2C            643                     LCALL   printString
+                       644
+03EE 120A50            645                     LCALL   PUT_LINE3
+03F1 900D2D            646                     MOV     DPTR, #user2
+03F4 120B2C            647                     LCALL   PRINTSTRING
+                       648
+03F7 120754            649             eInput: LCALL   promptKeypad                    ;To get a decision from the user
+03FA B4310B            650                     cjne    A, #31h, cont1                  ;if key press is 1 exit, else continue
+03FD 900D10            651                     mov     DPTR, #exitmsg
+0400 1209BF            652                     LCALL   clear_lcd
+0403 120B2C            653                     LCALL   printString
+0406 800B              654                     sjmp    done2
+                       655
+0408 B430EC            656             cont1:  cjne    A, #30h, eInput
+040B 0C                657                     INC     R4
+040C BC0001            658                     CJNE    R4, #00H, OV1
+040F 0B                659                     INC     R3
+                       660     OV1:
+0410 020360            661                     LJMP    Edit
+                       662     done2:
+0413 22                663                     RET
+                       664     ;================================================================================
+                       665     ;| PROMPT USED FOR FIND                                                         |
+                       666     ;================================================================================
+                       667     promptFind:
+0414 1209BF            668                     LCALL   clear_lcd
+0417 900CD8            669                     mov     DPTR, #esource
+041A 120B2C            670                     LCALL   printString
+                       671
+041D 900C73            672                     MOV     DPTR, #DIGITMSG
+0420 120A1A            673                     LCALL   PUT_LINE2
+0423 120B2C            674                     LCALL   PRINTSTRING
+                       675
+0426 120A67            676                     LCALL   PUT_LINE3_CB
+0429 120AF0            677                     LCALL   GETBYTE
+042C E9                678                     mov     A, R1
+042D FA                679                     mov     R2, A                   ;high byte of address now in xx00h R2
+                       680
+042E 120AF0            681                     LCALL   GETBYTE
+0431 E9                682                     MOV     A, R1
+0432 FB                683                     MOV     R3, A                   ;low byte of address now in 00xxh R3
+                       684                                                     ;source address now in DPTR
+0433 900DB8            685     CONT42:         MOV     DPTR, #VERIFYINPUT
+0436 120A86            686                     LCALL   PUT_LINE4
+0439 120B2C            687                     LCALL   PRINTSTRING
+043C 120754            688                     LCALL   PROMPTKEYPAD
+                       689
+043F B44103            690                     CJNE    A, #41H, CONT41         ;IF THEY HIT 'A' AND ACCEPT
+0442 02044B            691                     LJMP    ZERO                    ;MOVE FORWARD
+                       692
+0445 B444EB            693     CONT41:         CJNE    A, #44H, CONT42         ;IF THEY HIT 'D' AND WANT TO REDO
+0448 020414            694                     LJMP    PROMPTFIND
+                       695
+044B 1209BF            696     ZERO:           LCALL   clear_lcd
+044E 900CEB            697                     mov     DPTR, #fBlock
+0451 120B2C            698                     LCALL   printString
+                       699
+0454 900C73            700                     MOV     DPTR, #DIGITMSG
+0457 120A1A            701                     LCALL   PUT_LINE2
+045A 120B2C            702                     LCALL   PRINTSTRING
+                       703
+045D 120A67            704                     LCALL   PUT_LINE3_CB
+                       705
+0460 120AF0            706                     LCALL   GETBYTE
+0463 E9                707                     mov     A, R1
+0464 FC                708                     mov     R4, A                   ;XX00H OF BLOCK SIZE IN R4
+                       709
+0465 120AF0            710                     LCALL   GETBYTE
+0468 E9                711                     MOV     A, R1
+0469 FD                712                     MOV     R5, A                   ;00XXH OF BLOCK SIZE IN R5
+                       713
+046A 900DB8            714     CONT44:         MOV     DPTR, #VERIFYINPUT
+046D 120A86            715                     LCALL   PUT_LINE4
+0470 120B2C            716                     LCALL   PRINTSTRING
+0473 120754            717                     LCALL   PROMPTKEYPAD
+                       718
+0476 B44103            719                     CJNE    A, #41H, CONT43         ;IF THEY HIT 'A' AND ACCEPT
+0479 020482            720                     LJMP    CONT45                  ;MOVE FORWARD
+                       721
+047C B444EB            722     CONT43:         CJNE    A, #44H, CONT44         ;IF THEY HIT 'D' AND WANT TO REDO
+047F 02044B            723                     LJMP    ZERO
+                       724
+0482 BD0006            725     CONT45:         CJNE    R5, #0, CONT7
+0485 BC0003            726                     CJNE    R4, #0, CONT7           ;CANT HAVE BLOCK SIZE OF ZERO
+0488 02044B            727                     LJMP    ZERO
+                       728     CONT7:
+048B 1209BF            729                     LCALL   clear_lcd
+048E 900D36            730                     mov     DPTR, #FindByte
+0491 120B2C            731                     LCALL   printString
+                       732
+0494 900C84            733                     MOV     DPTR, #DIGITMSG1
+0497 120A1A            734                     LCALL   PUT_LINE2
+049A 120B2C            735                     LCALL   PRINTSTRING
+                       736
+049D 120A67            737                     LCALL   PUT_LINE3_CB
+04A0 120AF0            738                     LCALL   GETBYTE
+04A3 E9                739                     mov     A, R1
+04A4 FE                740                     mov     R6, A                   ;byte to find in R6
+                       741
+04A5 1209BF            742                     LCALL   clear_lcd
+04A8 22                743                     RET
+                       744
+                       745     ;================================================================================
+                       746     ;| See if a byte is in a specific location                                      |
+                       747     ;================================================================================
+                       748     ;SOURCE R2R3H
+                       749     ;BLOCK  R4R5H
+                       750     ;BYTE   R6H
+                       751     find:
+04A9 C2B0              752                     CLR     P3.0
+                       753
+04AB 8A83              754                     MOV     DPH, R2
+04AD 8B82              755                     MOV     DPL, R3
+04AF E0                756                     movx    A, @DPTR                ;GET VALUE IN AT ADDRESS LOCATION
+                       757
+04B0 C3                758                     CLR     C
+04B1 9E                759                     subb    A, R6
+04B2 6021              760                     jz      Found                   ;IF THE RESULT IS ZERO, THEN THE BYTE IS FOUND
+                       761
+04B4 BC0011            762                     CJNE    R4, #0, CONT8
+04B7 BD000E            763                     CJNE    R5, #0, CONT8           ;SEE IF WE ARE OUT OF BLOCK SIZE
+                       764                                                     ;IF NOT, CONTINUE, INC DPTR, DEC BLOCK SIZE
+04BA 900D59            765                     MOV     DPTR, #nFound           ;Didn't find byte, print message
+04BD 120B2C            766                     LCALL   printSTRING
+04C0 120B8E            767                     LCALL   HALFSECONDDELAY
+04C3 120B8E            768                     LCALL   HALFSECONDDELAY
+                       769
+04C6 8043              770                     SJMP    HERE14                  ;RETURN TO THE PROGRAM
+                       771
+                       772     CONT8:
+                       773
+04C8 0B                774                     INC     R3
+04C9 BB0001            775                     CJNE    R3, #00H, CONT9
+04CC 0A                776                     INC     R2                      ;CHECK IF LOWER BYTE HAS BEEN OVERFLOWED
+                       777     CONT9:
+04CD 1D                778                     DEC     R5
+04CE BDFF01            779                     CJNE    R5, #0FFH, CONT10
+04D1 1C                780                     DEC     R4                      ;CHECK IF LOWER BYTE HAS ROLLED OVER
+                       781     CONT10:
+04D2 0204A9            782                     LJMP    FIND                    ;HAVE NEW DPTR VALUE, AND NEW BLOCK SIZE
+                       783
+                       784     Found:
+04D5 C083              785                     PUSH    DPH
+04D7 C082              786                     PUSH    DPL
+04D9 900D4A            787                     mov     DPTR, #FOUNDBYTE        ;Found the byte, print message
+04DC 120B2C            788                     LCALL   printSTRING
+                       789
+04DF D082              790                     POP     DPL
+04E1 D083              791                     POP     DPH
+                       792
+04E3 120A1A            793                     LCALL   PUT_LINE2
+04E6 7428              794                     mov     A, #28h                 ;put '('
+04E8 120B7B            795                     LCALL   PRINTchar
+                       796
+04EB E583              797                     MOV     A, DPH                  ;PRINT DPH
+04ED 120584            798                     LCALL   PRINTADDR               ;print the address it was found at @DPTR
+                       799
+04F0 E582              800                     MOV     A, DPL                  ;PRINT DPL
+04F2 120584            801                     LCALL   PRINTADDR
+                       802
+04F5 7468              803                     mov     A, #68h                 ;print 'h'
+04F7 120B7B            804                     LCALL   PRINTChar
+                       805
+04FA 7429              806                     mov     A, #29h                 ;'put ')'
+04FC 120B7B            807                     LCALL   PRINTchar
+                       808
+04FF 120B8E            809                     LCALL   HALFSECONDDELAY
+0502 120B8E            810                     LCALL   HALFSECONDDELAY
+0505 120B8E            811                     LCALL   HALFSECONDDELAY
+0508 120B8E            812                     LCALL   HALFSECONDDELAY
+                       813
+050B 22                814                     here14: RET
+                       815     ;================================================================================
+                       816     ;| To flash status decimal place                                                |
+                       817     ;================================================================================
+                       818     flash7seg:
+050C C000              819                     PUSH    0
+050E D2B0              820                     SETB    P3.0
+0510 7820              821                     MOV     R0, #io_sevenseg
+                       822
+0512 747F              823                     MOV     A, #01111111b
+0514 120B9E            824                     LCALL   ioToggle                        ;what is in dptr goes to address, A to data
+0517 120BD4            825                     LCALL   delay_50ms
+                       826
+051A 74FF              827                     MOV     A, #11111111b
+051C 120B9E            828                     LCALL   ioToggle
+                       829
+051F D000              830                     POP     0
+0521 C2B0              831                     CLR     P3.0
+0523 22                832                     RET
+                       833     ;================================================================================
+                       834     ;| To update the time...                                                        |
+                       835     ;================================================================================
+                       836     getRTC:
+0524 C000              837                     push    0
+0526 C0E0              838                     push    acc
+                       839
+0528 1209EC            840                     LCALL   PUT_RTC                         ;print it to the correct spot
+                       841
+052B 7845              842                     MOV     R0, #45H                        ;top hour digit
+052D 12096F            843                     LCALL   readReg
+0530 4430              844                     ORL     A, #30H                         ;convert to ascii
+0532 120B7B            845                     LCALL   printChar
+                       846
+0535 7844              847                     MOV     R0, #44H                        ;bottom hour digit
+0537 12096F            848                     LCALL   readReg
+053A 4430              849                     ORL     A, #30H
+053C 120B7B            850                     LCALL   printChar
+                       851
+053F 743A              852                     MOV     A, #3Ah                         ;print ":"
+0541 120B7B            853                     LCALL   printChar
+                       854
+0544 7843              855                     MOV     R0, #43H                        ;get top minute digit
+0546 12096F            856                     LCALL   readReg
+0549 4430              857                     ORL     A, #30H
+054B 120B7B            858                     LCALL   printChar
+                       859
+054E 7842              860                     MOV     R0, #42H                        ;get bottom minute digit
+0550 12096F            861                     LCALL   readReg
+0553 4430              862                     ORL     A, #30H                         ;convert to ascii
+0555 120B7B            863                     LCALL   printChar
+                       864
+0558 743A              865                     MOV     A, #3AH                         ;print ":"
+055A 120B7B            866                     LCALL   printChar
+                       867
+055D 7841              868                     MOV     R0, #41H
+055F 12096F            869                     LCALL   readReg
+0562 4430              870                     ORL     A, #30H
+0564 120B7B            871                     LCALL   printChar
+                       872
+0567 7840              873                     MOV     R0, #40H
+0569 12096F            874                     LCALL   readReg
+056C 4430              875                     ORL     A, #30H
+056E 120B7B            876                     LCALL   printChar
+                       877
+0571 D0E0              878                     pop     acc
+0573 D000              879                     pop     0
+0575 22                880                     RET
+                       881
+                       882     ;================================================================================
+                       883     ;| To update the temperature...                                                 |
+                       884     ;================================================================================
+                       885     getTemp:
+0576 C000              886                     PUSH    0
+0578 7810              887                     MOV     R0, #10H
+057A D2B0              888                     SETB    P3.0                            ;Get the info from the ADC
+057C E2                889                     MOVX    A, @R0
+057D 9409              890                     SUBB    A, #9
+057F C2B0              891                     CLR     P3.0
+0581 D000              892                     POP     0
+                       893
+0583 22                894                     RET
+                       895     ;================================================================================
+                       896     ;| To print the byte at an address                                              |
+                       897     ;================================================================================
+                       898     printAddr:
+0584 C0E0              899                     push    0E0h
+0586 C001              900                     push    1
+0588 F5F0              901                     MOV     B, A
+058A 54F0              902                     anl     A, #0f0h
+058C 03                903                     rr      A
+058D 03                904                     rr      A
+058E 03                905                     rr      A
+058F 03                906                     rr      A
+0590 FF                907                     mov     R7, A                   ;To save the raw value
+0591 C3                908                     CLR     C
+0592 940A              909                     SUBB    A, #0Ah                 ;check if letter
+0594 5008              910                     jnc     letter5
+0596 EF                911                     mov     A, R7                   ;Reload A
+0597 4430              912                     orl     A, #30h                 ;Should have ascii number value now(03h --> 33h)
+0599 120B7B            913                     LCALL   printChar                       ;put character to LCD
+059C 8008              914                     sjmp    next2
+059E EF                915             letter5:mov     A, R7
+059F 4430              916                     orl     A, #30h                 ;ascii non-normalized
+05A1 2407              917                     add     A, #07h                 ;ascii normalized (3Fh --> 46h)
+05A3 120B7B            918                     LCALL   printChar
+05A6 E5F0              919             next2:  mov     A, B
+05A8 540F              920                     anl     A, #0fh
+05AA FF                921                     mov     R7, A                   ;to copy before check
+05AB C3                922                     CLR     C
+05AC 940A              923                     subb    A, #0Ah
+05AE 5008              924                     jnc     letter6
+05B0 EF                925                     mov     A, R7
+05B1 4430              926                     orl     A, #30h
+05B3 120B7B            927                     LCALL   printChar
+05B6 8008              928                     sjmp    finish2
+05B8 EF                929             letter6:mov     A, R7
+05B9 4430              930                     orl     A, #30h
+05BB 2407              931                     add     A, #07h
+05BD 120B7B            932                     LCALL   printChar                       ;print the normalized second character
+                       933             finish2:
+05C0 D001              934                     pop     1
+05C2 D0E0              935                     pop     0E0h
+05C4 22                936                     RET
+                       937
+                       938     ;================================================================================
+                       939     ;| To print temperature to the LCD                                              |
+                       940     ;================================================================================
+                       941     printTemp:
+                       942
+05C5 1209D5            943                     LCALL   PUT_TEMP
+05C8 EE                944                     MOV     A, R6                           ;10s place of the temp
+05C9 120B7B            945                     LCALL   printChar
+05CC EF                946                     MOV     A, R7                           ;1s place of the temp
+05CD 120B7B            947                     LCALL   printChar
+05D0 74DF              948                     MOV     A, #0DFH                        ;print degree symbol
+05D2 120B7B            949                     LCALL   printChar
+05D5 7443              950                     MOV     A, #43H
+05D7 120B7B            951                     LCALL   printChar
+                       952
+05DA 22                953                     RET
+                       954     ;================================================================================
+                       955     ;| Converts byte in A from hex to ascii                                         |
+                       956     ;================================================================================
+                       957     hexToAscii:
+05DB 75F00A            958                     MOV     B, #10
+05DE 84                959                     DIV     AB
+05DF AFF0              960                     MOV     R7, B
+05E1 75F00A            961                     MOV     B, #10
+05E4 84                962                     DIV     AB
+05E5 AEF0              963                     MOV     R6, B
+05E7 FD                964                     MOV     R5, A
+05E8 430730            965                     ORL     7, #30H                         ;first digit in R7
+05EB 430630            966                     ORL     6, #30H                         ;Second digit in R6
+05EE 430530            967                     ORL     5, #30H                         ;Third digit in R5
+05F1 22                968                     RET
+                       969     ;================================================================================
+                       970     ;| Waits for somebody to login                                                  |
+                       971     ;================================================================================
+                       972     login:
+05F2 1209BF            973                     LCALL   CLEAR_LCD
+05F5 740C              974                     MOV     A, #0CH                         ;TURN CURSOR OFF
+05F7 1209A8            975                     LCALL   COMNWRT
+                       976
+                       977     REPRINT:
+05FA 7892              978                     MOV     R0, #92H                        ;TOP RIGHT
+05FC 7995              979                     MOV     R1, #95H                        ;BOTTOM LEFT
+05FE 7A20              980                     MOV     R2, #20H                        ;SPACE
+0600 7BC0              981                     MOV     R3, #0C0H                       ;LEFT BAR
+0602 7CD3              982                     MOV     R4, #0D3H                       ;RIGHT BAR
+                       983
+0604 900C34            984     CONTPRINT:      MOV     DPTR, #LOGINART1
+0607 120A03            985                     LCALL   PUT_LINE1
+060A 120B2C            986                     LCALL   PRINTSTRING
+                       987
+060D 900C49            988                     MOV     DPTR, #osName
+0610 120A1A            989                     LCALL   PUT_LINE2
+0613 120B2C            990                     LCALL   printString
+                       991
+0616 900C5E            992                     MOV     DPTR, #LOGINART2
+0619 120A50            993                     LCALL   PUT_LINE3
+061C 120B2C            994                     LCALL   PRINTSTRING
+                       995
+061F 900C0A            996                     MOV     DPTR, #loginMSG
+0622 120A86            997                     LCALL   PUT_LINE4
+0625 120B2C            998                     LCALL   printString
+                       999
+0628 120754           1000     CONT22:         LCALL   PROMPTKEYPAD
+062B B431FA           1001                     CJNE    A, #31h, CONT22                 ;IF A ONE IS NOT PRESSED, KEEP PRINTING ART
+062E 020631           1002                     LJMP    ENDLOGIN                        ;OTHERWISE IF IT IS EQUAL TO 1, LOGIN
+                      1003
+                      1004                     ;BORDER ART AND ANIMATION
+                      1005     ;               MOV     A, R0                           ;PUT AT APPROPRIATE ADDRESS OF TOP BAR
+                      1006     ;               LCALL   PUT_FLEX
+                      1007     ;               MOV     A, R2                           ;LOAD SPACE
+                      1008     ;               LCALL   PRINTCHAR
+                      1009     ;               DEC     R0                              ;DECREMENT THE TOP BAR ADDRESS
+                      1010     ;
+                      1011     ;               MOV     A, R1
+                      1012     ;               LCALL   PUT_FLEX                        ;PUT AT BOTTOM BAR
+                      1013     ;               MOV     A, R2                           ;LOAD SPACE
+                      1014     ;               LCALL   PRINTCHAR
+                      1015     ;               CJNE    R1, #0A6H, CONT21
+                      1016     ;               LJMP    RIGHTLEFT
+                      1017     ;CONT21:
+                      1018     ;               LCALL   POLLKEYPAD
+                      1019     ;               CJNE    A, #31h, CONT19                 ;IF A ONE IS NOT PRESSED, KEEP PRINTING ART
+                      1020     ;               SJMP    ENDLOGIN                        ;OTHERWISE IF IT IS EQUAL TO 1, LOGIN
+                      1021     ;CONT19:
+                      1022     ;               INC     R1                              ;INCREMENT THE BOTTOM BAR ADDRESS
+                      1023     ;               ;LCALL  DELAY_100MS
+                      1024     ;               LJMP    CONTPRINT
+                      1025     ;
+                      1026     ;RIGHTLEFT:
+                      1027     ;               MOV     A, R3                           ;PRINT SPACE AT LEFT BAR
+                      1028     ;               LCALL   PUT_FLEX
+                      1029     ;               MOV     A, R2
+                      1030     ;               LCALL   PRINTCHAR
+                      1031     ;
+                      1032     ;               MOV     A, R4                           ;PRINT SPACE AT RIGHT BAR
+                      1033     ;               LCALL   PUT_FLEX
+                      1034     ;               MOV     A, R2
+                      1035     ;               LCALL   PRINTCHAR
+                      1036     ;
+                      1037     ;               LCALL   POLLKEYPAD
+                      1038     ;               CJNE    A, #31h, CONT22                 ;IF A ONE IS NOT PRESSED, KEEP PRINTING ART
+                      1039     ;               LJMP    ENDLOGIN                        ;OTHERWISE IF IT IS EQUAL TO 1, LOGIN
+                      1040     ;CONT22:
+                      1041     ;
+                      1042     ;               ;LCALL  DELAY_100MS
+                      1043     ;               LJMP    REPRINT
+                      1044     ENDLOGIN:
+0631 22               1045                     RET
+                      1046     ;================================================================================
+                      1047     ;| Displays the passcode prompt messages                                        |
+                      1048     ;================================================================================
+                      1049     displayPasscode:
+0632 1209BF           1050                     LCALL   CLEAR_LCD
+0635 900DA4           1051                     MOV     DPTR, #myPasscode
+0638 120A03           1052                     LCALL   PUT_LINE1
+063B 120B2C           1053                     LCALL   printString
+                      1054
+063E 120A31           1055                     LCALL   PUT_LINE2_CB
+                      1056                     ;MOV    DPTR, #myPasscode2
+                      1057                     ;LCALL  PUT_LINE2
+                      1058                     ;LCALL  printString
+                      1059
+0641 22               1060                     RET
+                      1061     ;================================================================================
+                      1062     ;| Gets the key presses and decides if they are valid                           |
+                      1063     ;================================================================================
+                      1064     getPasscode:
+0642 E4               1065                     CLR     A
+0643 7E03             1066                     MOV     R6, #3                                  ;TRIES LEFT
+0645 7D00             1067                     MOV     R5, #0                                  ;PROFILE #
+                      1068     retry:
+0647 900E0D           1069                     MOV     DPTR, #attempts                         ;print attempts string
+064A 120A86           1070                     LCALL   PUT_LINE4
+064D 120B2C           1071                     LCALL   printString
+                      1072
+0650 EE               1073                     MOV     A, R6                                   ;print attempts left number
+0651 4430             1074                     ORL     A, #30H
+0653 120B7B           1075                     LCALL   printChar
+0656 E4               1076                     CLR     A
+                      1077
+0657 120632           1078                     LCALL   displayPasscode                         ;display passcode message
+                      1079
+065A E4               1080                     CLR     A
+065B 120754           1081                     LCALL   promptKeypad                            ;get first digit in ascii from keypad
+                      1082                     ;MOV    A, #38h                                 ;TEST
+                      1083
+065E C0E0             1084                     PUSH    ACC
+0660 742A             1085                     MOV     A, #2AH
+0662 120B7B           1086                     LCALL   printChar                               ;print * to the LCD
+0665 D0E0             1087                     POP     ACC
+                      1088
+0667 540F             1089                     ANL     A, #0FH
+0669 12074F           1090                     LCALL   rotateleft
+066C F9               1091                     MOV     R1, A                                   ;move to R0 to save
+                      1092
+066D E4               1093                     CLR     A
+066E 120754           1094                     LCALL   promptKeypad
+                      1095                     ;MOV    A, #37H                                 ;TEST
+0671 C0E0             1096                     PUSH    ACC
+0673 742A             1097                     MOV     A, #2AH
+0675 120B7B           1098                     LCALL   printChar                               ;print * to the LCD
+0678 D0E0             1099                     POP     ACC
+067A 540F             1100                     ANL     A, #0FH
+067C 49               1101                     ORL     A, R1                                   ;first byte of pw in R1
+067D F9               1102                     MOV     R1, A                                   ;new cumulative saved
+067E FA               1103                     MOV     R2, A                                   ;saved in R2 also
+                      1104
+067F E4               1105                     CLR     A
+0680 120754           1106                     LCALL   promptKeypad
+                      1107                     ;MOV    A, #30H                                 ;TEST
+0683 C0E0             1108                     PUSH    ACC
+0685 742A             1109                     MOV     A, #2AH
+0687 120B7B           1110                     LCALL   printChar                               ;print * to the LCD
+068A D0E0             1111                     POP     ACC
+068C 540F             1112                     ANL     A, #0FH
+068E 12074F           1113                     LCALL   rotateleft
+0691 F8               1114                     MOV     R0, A                                   ;new cumulative saved
+                      1115
+0692 E4               1116                     CLR     A
+0693 120754           1117                     LCALL   promptKeypad
+                      1118                     ;MOV    A, #31H                                 ;TEST
+0696 C0E0             1119                     PUSH    ACC
+0698 742A             1120                     MOV     A, #2AH
+069A 120B7B           1121                     LCALL   printChar                               ;print * to the LCD
+069D D0E0             1122                     POP     ACC
+069F 540F             1123                     ANL     A, #0FH
+06A1 48               1124                     ORL     A, R0                                   ;second byte of pw stored in r0
+06A2 FB               1125                     MOV     R3, A                                   ;saved in R3 also
+06A3 F8               1126                     MOV     R0, A
+                      1127
+06A4 120BC8           1128                     LCALL   delay_100ms                             ;so you can see full password
+                      1129
+                      1130     ;R1 and R2 contain xx
+                      1131     ;R0 and R3 contain yy
+                      1132     ;to make 'xxyy' the password
+                      1133
+06A7 900F00           1134                     MOV     DPTR, #pwList                           ;LUT of valid passwords
+06AA E4               1135     checkPW:        CLR     A
+06AB EA               1136                     MOV     A, R2                                   ;load saved cumulative value
+06AC F9               1137                     MOV     R1, A
+06AD E4               1138                     CLR     A
+06AE 93               1139                     MOVC    A, @A+DPTR                              ;grab actuall password value from LUT
+06AF 601A             1140                     JZ      doOver                                  ;if end of LUT is hit, reprompt
+                      1141
+06B1 C3               1142                     CLR     C
+06B2 99               1143                     SUBB    A, R1                                   ;otherwise check xx
+06B3 6009             1144                     JZ      secondByte                              ;if they are exact, valid xx
+06B5 A3               1145                     INC     DPTR                                    ;otherwise, pw cannot be valid at all
+06B6 A3               1146                     INC     DPTR                                    ;inc dptr and jump to next xxyy
+                      1147
+06B7 E4               1148                     CLR     A
+06B8 93               1149                     MOVC    A, @A+DPTR                              ;check first byte of next xxyy
+06B9 6010             1150                     JZ      doOver                                  ;if zero, end of LUT reached
+06BB 0D               1151                     INC     R5                                      ;otherwise, increment potential profi
+06BC 80EC             1152                     sjmp    checkPW                                 ;check the next pw in LUT
+                      1153     secondByte:
+06BE A3               1154                     INC     DPTR
+06BF EB               1155                     MOV     A, R3                                   ;load yy
+06C0 F8               1156                     MOV     R0, A
+06C1 E4               1157                     CLR     A
+06C2 93               1158                     MOVC    A, @A+DPTR                              ;load yy of saved LUT value
+                      1159
+06C3 C3               1160                     CLR     C
+06C4 98               1161                     SUBB    A, R0                                   ;check if equal
+06C5 602C             1162                     JZ      success                                 ;if exact, valid yy
+06C7 A3               1163                     INC     DPTR                                    ;otherwise jump to next xxyy
+06C8 0D               1164                     INC     R5                                      ;update potential profile
+06C9 80DF             1165                     SJMP    checkPW                                 ;repeat check
+                      1166     doOver:
+06CB 7D00             1167                     MOV     R5, #0                                  ;clear potential profile if re-enteri
+06CD 1209BF           1168                     LCALL   CLEAR_LCD
+06D0 900DCD           1169                     MOV     DPTR, #incorrectCode                    ;print incorrect code prompt
+06D3 120A03           1170                     LCALL   PUT_LINE1
+06D6 120B2C           1171                     LCALL   printString
+06D9 120B8E           1172                     LCALL   halfseconddelay
+                      1173
+06DC 1209BF           1174                     LCALL   CLEAR_LCD
+06DF E4               1175                     CLR     A                                       ;conditional to check if we should
+06E0 1E               1176                     DEC     R6                                      ;retry or lock the system
+06E1 EE               1177                     MOV     A, R6
+06E2 601C             1178                     JZ      lockout                                 ;jump if zero to lock system
+                      1179
+06E4 900DE0           1180                     MOV     DPTR, #tryagain                         ;prompt again if more tries
+06E7 120A03           1181                     LCALL   PUT_LINE1
+06EA 120B2C           1182                     LCALL   printString
+06ED 120B8E           1183                     LCALL   halfseconddelay
+06F0 020647           1184                     LJMP    retry
+                      1185
+                      1186
+                      1187                     ;DJNZ   R6, retry                               ;Three tries to get pw right before
+                      1188                     ;SJMP   lockout                                 ;entering lockout
+                      1189
+06F3 1209BF           1190     success:        LCALL   CLEAR_LCD                               ;clear the lcd
+06F6 900DF1           1191                     MOV     DPTR, #pwSuccess                        ;and print success message
+06F9 120B2C           1192                     LCALL   printString
+                      1193
+                      1194                     ;check profiles to display
+                      1195                     ;michael = 0
+                      1196                     ;collin = 1
+                      1197                     ;riley = 2
+                      1198
+06FC 120718           1199                     LCALL   checkProfile                            ;uses R5 to determine what profile
+                      1200                                                                     ;has put their passcode in
+                      1201
+06FF 22               1202                     RET
+                      1203     ;================================================================================
+                      1204     ;| After 3 unsuccessful logins, lock the board                                  |
+                      1205     ;================================================================================
+                      1206     lockout:
+0700 1209BF           1207                     LCALL   CLEAR_LCD
+0703 900DFE           1208                     MOV     DPTR, #lockedmsg                ;display lockout message for all-time
+0706 120A03           1209                     LCALL   PUT_LINE1                       ;on line 1 of LCD
+0709 120B2C           1210                     LCALL   printString
+                      1211
+070C 80FE             1212     locked:         SJMP    locked                          ;infinite loop
+                      1213
+070E 22               1214                     RET
+                      1215     ;================================================================================
+                      1216     ;| [UNUSED]Scramble the input value in A for security                           |
+                      1217     ;================================================================================
+                      1218     scrambleKey:
+070F 2423             1219                     ADD     A, #23H                         ;Michael Jordan
+                      1220
+0711 23               1221                     RL      A                               ;Rotate left three times for '91-'93
+0712 23               1222                     RL      A
+0713 23               1223                     RL      A
+                      1224
+0714 23               1225                     RL      A                               ;Rotate left three more times for '96-'98
+0715 23               1226                     RL      A
+0716 23               1227                     RL      A
+                      1228
+0717 22               1229                     RET
+                      1230
+                      1231     ;================================================================================
+                      1232     ;| iterate through list of profiles to compare R5 to                            |
+                      1233     ;================================================================================
+                      1234     checkProfile:
+0718 120A1A           1235                     LCALL   PUT_LINE2
+071B BD0005           1236                     CJNE    R5, #0, checkCollin                     ;check for michael
+071E 900E1A           1237                     MOV     DPTR, #michael
+0721 801E             1238                     SJMP    printName
+                      1239
+0723 BD0105           1240     checkCollin:    CJNE    R5, #1, checkRiley                      ;check for collin
+0726 900E23           1241                     MOV     DPTR, #collin
+0729 8016             1242                     SJMP    printName
+                      1243
+072B BD0205           1244     checkRiley:     CJNE    R5, #2, checkSharif                     ;check for riley
+072E 900E2B           1245                     MOV     DPTR, #riley                            ;if not, exit (should never happen)
+0731 800E             1246                     SJMP    printName
+                      1247
+0733 BD0305           1248     checkSharif:    CJNE    R5, #3, checkJeff                       ;check for prof. sharif
+0736 900E32           1249                     MOV     DPTR, #sharif
+0739 8006             1250                     SJMP    printName
+                      1251
+073B BD0409           1252     checkJeff:      CJNE    R5, #4, exit                            ;check for jeff
+073E 900E40           1253                     MOV     DPTR, #jeff
+                      1254
+0741 120B2C           1255     printName:      LCALL   printString
+0744 120B8E           1256                     LCALL   halfseconddelay
+                      1257     exit:
+0747 22               1258                     RET
+                      1259     ;================================================================================
+                      1260     ;| Procedure for 7-segment interaction                                          |
+                      1261     ;================================================================================
+                      1262     sevenseg:
+0748 C000             1263                     push    0
+074A 7820             1264                     MOV     R0, #IO_SEVENSEG
+                      1265
+                      1266                     ;will implement 7-segment interaction
+                      1267                     ;at a later date
+                      1268
+074C D000             1269                     pop     0
+                      1270
+074E 22               1271                     RET
+                      1272     ;================================================================================
+                      1273     ;| Rotates left 4 times                                                         |
+                      1274     ;================================================================================
+                      1275     rotateleft:
+074F 23               1276                     RL      A
+0750 23               1277                     RL      A
+0751 23               1278                     RL      A
+0752 23               1279                     RL      A
+0753 22               1280                     RET
+                      1281     ;================================================================================
+                      1282     ;| Procedure to wait for an ascii byte press by the user; "1" = 31h           |
+                      1283     ;================================================================================
+                      1284     promptKeypad:
+0754 7590FF           1285                     MOV     keypad, #0FFh
+0757 75900F           1286             K1:     MOV     keypad, #0FH
+075A E590             1287                     MOV     A, keypad
+075C 540F             1288                     ANL     A, #0Fh
+075E B40FF6           1289                     CJNE    A, #0Fh, K1                     ;check if key is still pressed on pad
+0761 120BF9           1290             K2:     LCALL   delay_1ms
+0764 E590             1291                     MOV     A, keypad
+0766 540F             1292                     ANL     A, #0Fh
+0768 B40F02           1293                     CJNE    A, #0Fh, OVER                   ;if not, then ground each row until 0 found
+076B 80F4             1294                     SJMP    K2
+076D 120BF9           1295             OVER:   LCALL   delay_1ms
+0770 E590             1296                     MOV     A, keypad
+0772 540F             1297                     ANL     A, #0Fh
+0774 B40F02           1298                     CJNE    A, #0Fh, OVER1
+0777 80E8             1299                     SJMP    K2
+0779 7590EF           1300             OVER1:  MOV     keypad, #0EFH                   ;row 0 (1110)
+077C E590             1301                     MOV     A, keypad
+077E 540F             1302                     ANL     A, #0FH
+0780 B40F21           1303                     CJNE    A, #0FH, ROW_0
+0783 7590DF           1304                     MOV     keypad, #0DFH                   ;row 1 (1101)
+0786 E590             1305                     MOV     A, keypad
+0788 540F             1306                     ANL     A, #0FH
+078A B40F1C           1307                     CJNE    A, #0FH, ROW_1
+078D 7590BF           1308                     MOV     keypad, #0BFH                   ;row 2 (1011)
+0790 E590             1309                     MOV     A, keypad
+0792 540F             1310                     ANL     A, #0FH
+0794 B40F17           1311                     CJNE    A, #0FH, ROW_2                  ;row 3 (0111)
+0797 75907F           1312                     MOV     keypad, #07FH
+079A E590             1313                     MOV     A, keypad
+079C 540F             1314                     ANL     A, #0FH
+079E B40F12           1315                     CJNE    A, #0FH, ROW_3
+07A1 020761           1316                     LJMP    K2
+07A4 900F0B           1317             ROW_0:  MOV     DPTR, #KCODE0
+07A7 800F             1318                     sjmp    kFIND
+07A9 900F0F           1319             ROW_1:  MOV     DPTR, #KCODE1
+07AC 800A             1320                     sjmp    kFIND
+07AE 900F13           1321             ROW_2:  MOV     DPTR, #KCODE2
+07B1 8005             1322                     sjmp    kFIND
+07B3 900F17           1323             ROW_3:  MOV     DPTR, #KCODE3
+07B6 8000             1324                     sjmp    kFIND
+07B8 13               1325             kFIND:  RRC     A
+07B9 5003             1326                     JNC     MATCH
+07BB A3               1327                     INC     DPTR
+07BC 80FA             1328                     sjmp    kFIND
+07BE E4               1329             MATCH:  CLR     A
+07BF 93               1330                     MOVC    A, @A+DPTR
+07C0 F590             1331                     MOV     keypad, A
+07C2 22               1332                     RET
+                      1333     ;================================================================================
+                      1334     ;| Procedure to poll for an ascii byte press by the user; "1" = 31h           |
+                      1335     ;================================================================================
+                      1336     pollKeypad:
+07C3 7590FF           1337                     MOV     keypad, #0FFh
+07C6 75900F           1338             K3:     MOV     keypad, #0Fh
+07C9 120BF9           1339                     LCALL   delay_1ms
+07CC E590             1340                     MOV     A, keypad
+07CE 540F             1341                     ANL     A, #0Fh
+07D0 B40F02           1342                     CJNE    A, #0Fh, OVER3
+07D3 8049             1343                     SJMP    exit1                           ;otherwise, exit and go back to updating
+07D5 7590EF           1344             OVER3:  MOV     keypad, #0EFH                   ;row 0 (1110)
+07D8 E590             1345                     MOV     A, keypad
+07DA 540F             1346                     ANL     A, #0FH
+07DC B40F21           1347                     CJNE    A, #0FH, xROW_0
+07DF 7590DF           1348                     MOV     keypad, #0DFH                   ;row 1 (1101)
+07E2 E590             1349                     MOV     A, keypad
+07E4 540F             1350                     ANL     A, #0FH
+07E6 B40F1C           1351                     CJNE    A, #0FH, xROW_1
+07E9 7590BF           1352                     MOV     keypad, #0BFH                   ;row 2 (1011)
+07EC E590             1353                     MOV     A, keypad
+07EE 540F             1354                     ANL     A, #0FH
+07F0 B40F17           1355                     CJNE    A, #0FH, xROW_2                 ;row 3 (0111)
+07F3 75907F           1356                     MOV     keypad, #07FH
+07F6 E590             1357                     MOV     A, keypad
+07F8 540F             1358                     ANL     A, #0FH
+07FA B40F12           1359                     CJNE    A, #0FH, xROW_3
+07FD 02081E           1360                     LJMP    exit1
+0800 900F0B           1361             xROW_0: MOV     DPTR, #KCODE0
+0803 800F             1362                     sjmp    kFIND2
+0805 900F0F           1363             xROW_1: MOV     DPTR, #KCODE1
+0808 800A             1364                     sjmp    kFIND2
+080A 900F13           1365             xROW_2: MOV     DPTR, #KCODE2
+080D 8005             1366                     sjmp    kFIND2
+080F 900F17           1367             xROW_3: MOV     DPTR, #KCODE3
+0812 8000             1368                     sjmp    kFIND2
+0814 13               1369             kFIND2: RRC     A
+0815 5003             1370                     JNC     MATCH2
+0817 A3               1371                     INC     DPTR
+0818 80FA             1372                     sjmp    kFIND2
+081A E4               1373             MATCH2: CLR     A
+081B 93               1374                     MOVC    A, @A+DPTR
+081C F590             1375                     MOV     keypad, A
+                      1376             exit1:
+081E 22               1377                     RET
+                      1378     ;================================================================================
+                      1379     ;| 7 Segment wakeup procedure (3 DP blinks)                                     |
+                      1380     ;================================================================================
+                      1381     wakeUp:
+081F C000             1382                     PUSH    0
+0821 D2B0             1383                     SETB    P3.0
+0823 7820             1384                     MOV     R0, #io_sevenseg
+                      1385
+0825 747F             1386                     MOV     A, #01111111b
+0827 120B9E           1387                     LCALL   ioToggle                        ;what is in dptr goes to address, A to data
+082A 120BC8           1388                     LCALL   delay_100ms
+082D 120BC8           1389                     LCALL   delay_100ms
+                      1390
+0830 74FF             1391                     MOV     A, #11111111b
+0832 120B9E           1392                     LCALL   ioToggle
+0835 120BC8           1393                     LCALL   delay_100ms
+0838 120BC8           1394                     LCALL   delay_100ms
+                      1395
+083B 747F             1396                     MOV     A, #01111111b
+083D 120B9E           1397                     LCALL   ioToggle
+0840 120BC8           1398                     LCALL   delay_100ms
+0843 120BC8           1399                     LCALL   delay_100ms
+                      1400
+0846 74FF             1401                     MOV     A, #11111111b
+0848 120B9E           1402                     LCALL   ioToggle
+084B 120BC8           1403                     LCALL   delay_100ms
+084E 120BC8           1404                     LCALL   delay_100ms
+                      1405
+0851 747F             1406                     MOV     A, #01111111b
+0853 120B9E           1407                     LCALL   ioToggle
+0856 120BC8           1408                     LCALL   delay_100ms
+0859 120BC8           1409                     LCALL   delay_100ms
+                      1410
+085C 74FF             1411                     MOV     A, #11111111b
+085E 120B9E           1412                     LCALL   ioToggle
+0861 120BC8           1413                     LCALL   delay_100ms
+0864 120BC8           1414                     LCALL   delay_100ms
+0867 D000             1415                     POP     0
+0869 C2B0             1416                     CLR     P3.0
+                      1417
+086B 22               1418                     RET
+                      1419     ;================================================================================
+                      1420     ;| Procedure to display my name on the LCD                                      |
+                      1421     ;================================================================================
+                      1422     displayName:
+086C 120A03           1423                     LCALL   PUT_LINE1
+086F 900E46           1424                     MOV     DPTR, #myName
+0872 120B2C           1425                     LCALL   printString
+                      1426
+0875 120A1A           1427                     LCALL   PUT_LINE2
+0878 900E58           1428                     MOV     DPTR, #myClass
+087B 120B2C           1429                     LCALL   printString
+                      1430
+087E 120B8E           1431                     LCALL   halfseconddelay
+0881 1209BF           1432                     LCALL   CLEAR_LCD
+0884 120B8E           1433                     LCALL   halfseconddelay
+                      1434
+0887 22               1435                     RET
+                      1436     ;================================================================================
+                      1437     ;| Procedure to display the menu on the LCD screen                              |
+                      1438     ;================================================================================
+                      1439     displayMenu:
+0888 1209BF           1440                     LCALL   CLEAR_LCD
+088B 120A1A           1441                     LCALL   PUT_LINE2                       ;print choices 1
+088E 900E63           1442                     MOV     DPTR, #menu1
+0891 120B2C           1443                     LCALL   printString                     ;will print the string pointed @ by dptr
+                      1444
+0894 120A50           1445                     LCALL   PUT_LINE3                       ;print choices 2
+0897 900E78           1446                     MOV     DPTR, #menu2
+089A 120B2C           1447                     LCALL   printString
+                      1448
+089D 120A86           1449                     LCALL   PUT_LINE4                       ;print choices 2
+08A0 900E8D           1450                     MOV     DPTR, #logout
+08A3 120B2C           1451                     LCALL   printString
+                      1452
+08A6 22               1453                     RET
+                      1454     ;================================================================================
+                      1455     ;| Procedure to initialize the LCD                                              |
+                      1456     ;================================================================================
+                      1457     LCD_INIT:
+08A7 C2B1             1458                     CLR     RW
+08A9 C2B2             1459                     CLR     RS
+                      1460
+08AB 120BD4           1461                     LCALL   DELAY_50MS
+                      1462
+08AE 7438             1463                     MOV     A, #38H
+08B0 1209A8           1464                     LCALL   COMNWRT
+08B3 120BF9           1465                     LCALL   DELAY_1MS
+                      1466
+08B6 7438             1467                     MOV     A, #38H
+08B8 1209A8           1468                     LCALL   COMNWRT
+08BB 120BF9           1469                     LCALL   DELAY_1MS
+                      1470
+08BE 740C             1471                     MOV     A, #0CH
+08C0 1209A8           1472                     LCALL   COMNWRT
+08C3 120BF9           1473                     LCALL   DELAY_1MS
+                      1474
+08C6 7401             1475                     MOV     A, #01H
+08C8 1209A8           1476                     LCALL   COMNWRT
+08CB 120BEC           1477                     LCALL   DELAY_5MS
+                      1478
+08CE 7406             1479                     MOV     A, #06H
+08D0 1209A8           1480                     LCALL   COMNWRT
+                      1481
+08D3 22               1482                     RET
+                      1483     ;================================================================================
+                      1484     ;| RTC initialization                                                           |
+                      1485     ;================================================================================
+                      1486     RTC_INIT:
+                      1487
+08D4 784F             1488                     MOV     R0, #4Fh                        ;F REG INIT
+08D6 7400             1489                     MOV     A, #00h
+08D8 120B9E           1490                     LCALL   ioToggle                        ;Send whats in R0 to Address bus
+                      1491                                                             ;Send whats in A to data bus
+08DB 784D             1492                     MOV     R0, #4Dh
+08DD 7400             1493                     MOV     A, #00h                         ;CD register init
+08DF 120B9E           1494                     LCALL   ioToggle
+                      1495
+                      1496                     ;LCALL  checkBusy
+                      1497
+08E2 784F             1498                     MOV     R0, #4FH
+08E4 7403             1499                     MOV     A, #03H                         ;RESET THE COUNTER
+08E6 120B9E           1500                     LCALL   ioToggle
+                      1501
+                      1502                     ;SET CURRENT TIME FOR REGS
+08E9 7840             1503                     MOV     R0, #40H                        ;FIRST SECONDS
+08EB 7400             1504                     MOV     A, #00H
+                      1505                     ;LCALL  SETHOLD
+08ED 120B9E           1506                     LCALL   IOTOGGLE
+                      1507                     ;LCALL  CLEARHOLD
+                      1508
+08F0 7841             1509                     MOV     R0, #41H                        ;SECOND SECONDS
+08F2 7400             1510                     MOV     A, #00H
+                      1511                     ;LCALL  SETHOLD
+08F4 120B9E           1512                     LCALL   IOTOGGLE
+                      1513                     ;LCALL  CLEARHOLD
+                      1514
+08F7 7842             1515                     MOV     R0, #42H                        ;ETC...
+08F9 7400             1516                     MOV     A, #00H
+                      1517                     ;LCALL  SETHOLD
+08FB 120B9E           1518                     CALL    IOTOGGLE
+                      1519                     ;LCALL  CLEARHOLD
+                      1520
+08FE 7843             1521                     MOV     R0, #43H
+0900 7400             1522                     MOV     A, #00H
+                      1523                     ;LCALL  SETHOLD
+0902 120B9E           1524                     CALL    IOTOGGLE
+                      1525                     ;LCALL  CLEARHOLD
+                      1526
+0905 7844             1527                     MOV     R0, #44H
+0907 7400             1528                     MOV     A, #00H
+                      1529                     ;LCALL  SETHOLD
+0909 120B9E           1530                     CALL    IOTOGGLE
+                      1531                     ;LCALL  CLEARHOLD
+                      1532
+090C 7845             1533                     MOV     R0, #45H
+090E 7400             1534                     MOV     A, #00H
+                      1535                     ;LCALL  SETHOLD
+0910 120B9E           1536                     CALL    IOTOGGLE
+                      1537                     ;LCALL  CLEARHOLD
+                      1538
+0913 7846             1539                     MOV     R0, #46H
+0915 7400             1540                     MOV     A, #00H
+                      1541                     ;LCALL  SETHOLD
+0917 120B9E           1542                     CALL    IOTOGGLE
+                      1543                     ;LCALL  CLEARHOLD
+                      1544
+091A 7847             1545                     MOV     R0, #47H
+091C 7400             1546                     MOV     A, #00H
+                      1547                     ;LCALL  SETHOLD
+091E 120B9E           1548                     CALL    IOTOGGLE
+                      1549                     ;LCALL  CLEARHOLD
+                      1550
+0921 7848             1551                     MOV     R0, #48H
+0923 7400             1552                     MOV     A, #00H
+                      1553                     ;LCALL  SETHOLD
+0925 120B9E           1554                     CALL    IOTOGGLE
+                      1555                     ;LCALL  CLEARHOLD
+                      1556
+0928 7849             1557                     MOV     R0, #49H
+092A 7400             1558                     MOV     A, #00H
+                      1559                     ;LCALL  SETHOLD
+092C 120B9E           1560                     CALL    IOTOGGLE
+                      1561                     ;LCALL  CLEARHOLD
+                      1562
+092F 784A             1563                     MOV     R0, #4AH
+0931 7400             1564                     MOV     A, #00H
+                      1565                     ;LCALL  SETHOLD
+0933 120B9E           1566                     CALL    IOTOGGLE
+                      1567                     ;LCALL  CLEARHOLD
+                      1568
+0936 784B             1569                     MOV     R0, #4BH
+0938 7400             1570                     MOV     A, #00H
+                      1571                     ;LCALL  SETHOLD
+093A 120B9E           1572                     CALL    IOTOGGLE
+                      1573                     ;LCALL  CLEARHOLD
+                      1574
+                      1575
+                      1576                     ;START COUNTER AND RELEASE HOLD
+093D 784F             1577                     MOV     R0, #4Fh                        ;F REG INIT
+093F 7400             1578                     MOV     A, #00h
+0941 120B9E           1579                     LCALL   ioToggle
+                      1580
+0944 784D             1581                     MOV     R0, #4Dh
+0946 7400             1582                     MOV     A, #00h                         ;CD register init
+0948 120B9E           1583                     LCALL   ioToggle
+                      1584
+094B 22               1585                     RET
+                      1586     ;================================================================================
+                      1587     ;| Check if the RTC is busy                                                     |
+                      1588     ;================================================================================
+                      1589     checkBusy:
+094C C000             1590                     PUSH    0
+094E C0E0             1591                     PUSH    ACC
+0950 784D             1592                     MOV     R0, #4Dh                        ;GET CD REG IN RTC
+                      1593     waitBusy:
+0952 7405             1594                     MOV     A, #05H
+0954 D2B0             1595                     SETB    P3.0
+0956 F2               1596                     MOVX    @R0, A                  ;SET HOLD
+0957 C2B0             1597                     CLR     P3.0
+                      1598
+0959 D2B0             1599                     SETB    P3.0
+095B E2               1600                     MOVX    A, @R0                  ;READ IN THE CD REG
+095C C2B0             1601                     CLR     P3.0
+                      1602
+                      1603                     ;JNB    ACC.1, busyReady        ;CHECK IF BUSY BIT HIGH
+                      1604
+095E 7404             1605                     MOV     A, #04h
+0960 D2B0             1606                     SETB    P3.0
+0962 F2               1607                     MOVX    @R0, A                  ;clear hold to let busy bit update
+0963 C2B0             1608                     CLR     P3.0
+0965 120BF9           1609                     LCALL   DELAY_1MS
+0968 80E8             1610                     SJMP    waitBusy
+                      1611
+                      1612     busyReady:
+096A D0E0             1613                     POP     ACC
+096C D000             1614                     POP     0
+                      1615
+096E 22               1616                     RET
+                      1617     ;================================================================================
+                      1618     ;| Read a register in the RTC                                                   |
+                      1619     ;================================================================================
+                      1620     readReg:
+096F C000             1621                     PUSH    0
+0971 C0E0             1622                     PUSH    ACC
+                      1623
+0973 784D             1624                     MOV     R0, #4DH                        ;SET THE HOLD BIT
+0975 7405             1625                     MOV     A, #05H
+0977 D2B0             1626                     SETB    P3.0
+0979 F2               1627                     MOVX    @R0, A
+097A C2B0             1628                     CLR     P3.0
+                      1629
+097C D0E0             1630                     POP     ACC
+097E D000             1631                     POP     0
+                      1632
+                      1633                     ;LCALL  checkBusy                       ;Wait until not busy
+0980 D2B0             1634                     SETB    P3.0                                    ;read valUE
+0982 E2               1635                     MOVX    A, @R0
+0983 C2B0             1636                     CLR     P3.0
+                      1637
+0985 540F             1638                     ANL     A, #0FH                         ;MASK OFF LOWER HALF
+                      1639
+0987 C0E0             1640                     PUSH    ACC
+                      1641
+0989 784D             1642                     MOV     R0, #4DH                        ;CLR THE HOLD BIT
+098B 7404             1643                     MOV     A, #04H
+098D D2B0             1644                     SETB    P3.0
+098F F2               1645                     MOVX    @R0, A
+0990 C2B0             1646                     CLR     P3.0
+0992 D0E0             1647                     POP     ACC
+                      1648
+                      1649
+                      1650
+0994 22               1651                     RET
+                      1652     ;================================================================================
+                      1653     ;| Write to a register in the RTC                                                       |
+                      1654     ;================================================================================
+                      1655     writeReg:
+                      1656                     ;LCALL  checkBusy                       ;Wait until not busy
+0995 D2B0             1657                     SETB    P3.0
+0997 F2               1658                     MOVX    @R0, A                          ;Read in value
+0998 C2B0             1659                     CLR     P3.0
+                      1660
+099A C0E0             1661                     PUSH    ACC
+099C 784D             1662                     MOV     R0, #4DH
+099E 7404             1663                     MOV     A, #04H                         ;Clear hold
+09A0 D2B0             1664                     SETB    P3.0
+09A2 F2               1665                     MOVX    @R0, A
+09A3 C2B0             1666                     CLR     P3.0
+09A5 D0E0             1667                     POP     ACC
+                      1668
+09A7 22               1669                     RET
+                      1670     ;================================================================================
+                      1671     ;| To write a command to the LCD THAT IS IN A                                   |
+                      1672     ;================================================================================
+                      1673     COMNWRT:
+09A8 C0E0             1674                     PUSH    ACC
+09AA C000             1675                     PUSH    0
+09AC 7880             1676                     MOV     R0, #io_lcd
+09AE C2B2             1677                     CLR     RS                              ;RS
+09B0 C2B1             1678                     CLR     RW                              ;RW
+09B2 D2B0             1679                     SETB    P3.0
+09B4 F2               1680                     MOVX    @R0, A
+09B5 C2B0             1681                     CLR     P3.0
+09B7 120BF9           1682                     LCALL   DELAY_1MS
+09BA D0E0             1683                     POP     ACC
+09BC D000             1684                     POP     0
+09BE 22               1685                     RET
+                      1686
+                      1687     ;================================================================================
+                      1688     ;| To clear the LCD                                                             |
+                      1689     ;================================================================================
+                      1690     CLEAR_LCD:
+09BF C000             1691                     PUSH    0
+09C1 C0E0             1692                     push    ACC
+09C3 7401             1693                     MOV     A,#01H
+09C5 1209A8           1694                     LCALL   COMNWRT                         ;CLEAR THE LCD
+09C8 120BEC           1695                     LCALL   DELAY_5MS
+09CB 740C             1696                     MOV     A, #0CH                         ;REMOVE THE CURSOR
+09CD 1209A8           1697                     LCALL   COMNWRT
+09D0 D0E0             1698                     pop     ACC
+09D2 D000             1699                     pop     0
+09D4 22               1700                     RET
+                      1701     ;================================================================================
+                      1702     ;| To print the temperature in the top right corner                             |
+                      1703     ;================================================================================
+                      1704     PUT_TEMP:
+09D5 C000             1705                     push    0
+09D7 C0E0             1706                     push    ACC
+09D9 C2B2             1707                     CLR     RS
+09DB A880             1708                     MOV     R0, io_lcd
+09DD 7490             1709                     MOV     A, #090H
+09DF 1209A8           1710                     LCALL   COMNWRT
+09E2 120BEC           1711                     LCALL   DELAY_5MS
+09E5 D2B2             1712                     SETB    RS
+09E7 D0E0             1713                     pop     ACC
+09E9 D000             1714                     pop     0
+09EB 22               1715                     RET
+                      1716     ;================================================================================
+                      1717     ;| Put the temperature in the top left of the LCD                               |
+                      1718     ;================================================================================
+                      1719     PUT_RTC:
+09EC C000             1720                     PUSH    0
+09EE C0E0             1721                     PUSH    ACC
+09F0 C2B2             1722                     CLR     RS
+09F2 A880             1723                     MOV     R0, io_lcd
+09F4 7480             1724                     MOV     A, #080H
+09F6 1209A8           1725                     LCALL   COMNWRT
+09F9 120BEC           1726                     LCALL   DELAY_5MS
+09FC D2B2             1727                     SETB    RS
+09FE D0E0             1728                     POP     ACC
+0A00 D000             1729                     POP     0
+0A02 22               1730                     RET
+                      1731     ;================================================================================
+                      1732     ;| Print the string on the first line of the LCD                                |
+                      1733     ;================================================================================
+                      1734     PUT_LINE1:
+0A03 C000             1735                     PUSH    0
+0A05 C0E0             1736                     PUSH    ACC
+0A07 C2B2             1737                     CLR     RS
+0A09 A880             1738                     MOV     R0, io_lcd
+0A0B 7480             1739                     MOV     A, #080H
+0A0D 1209A8           1740                     LCALL   COMNWRT
+0A10 120BEC           1741                     LCALL   DELAY_5MS
+0A13 D2B2             1742                     SETB    RS
+0A15 D0E0             1743                     POP     ACC
+0A17 D000             1744                     POP     0
+0A19 22               1745                     RET
+                      1746     ;================================================================================
+                      1747     ;| Put string on the second line of the LCD                                     |
+                      1748     ;================================================================================
+                      1749     PUT_LINE2:
+0A1A C000             1750                     PUSH    0
+0A1C C0E0             1751                     PUSH    ACC
+0A1E C2B2             1752                     CLR     RS
+0A20 A880             1753                     MOV     R0, io_lcd
+0A22 74C0             1754                     MOV     A, #0C0H
+0A24 1209A8           1755                     LCALL   COMNWRT
+0A27 120BEC           1756                     LCALL   DELAY_5MS
+0A2A D2B2             1757                     SETB    RS
+0A2C D0E0             1758                     POP     ACC
+0A2E D000             1759                     POP     0
+0A30 22               1760                     RET
+                      1761     ;================================================================================
+                      1762     ;| Put string on the second line of the LCD w/ cursor blinking                  |
+                      1763     ;================================================================================
+                      1764     PUT_LINE2_CB:
+0A31 C000             1765                     PUSH    0
+0A33 C0E0             1766                     PUSH    ACC
+0A35 C2B2             1767                     CLR     RS
+0A37 A880             1768                     MOV     R0, io_lcd
+0A39 74C0             1769                     MOV     A, #0C0H                        ;DDRAM ADDRESS
+0A3B 1209A8           1770                     LCALL   COMNWRT
+0A3E 120BEC           1771                     LCALL   DELAY_5MS
+0A41 740F             1772                     MOV     A, #0FH                         ;SET CURSOR ON AND BLINKING
+0A43 1209A8           1773                     LCALL   COMNWRT
+0A46 120BF9           1774                     LCALL   DELAY_1MS
+0A49 D2B2             1775                     SETB    RS
+0A4B D0E0             1776                     POP     ACC
+0A4D D000             1777                     POP     0
+0A4F 22               1778                     RET
+                      1779     ;================================================================================
+                      1780     ;| Put string on line 3 of the lCD                                              |
+                      1781     ;================================================================================
+                      1782     PUT_LINE3:
+0A50 C000             1783                     PUSH    0
+0A52 C0E0             1784                     PUSH    ACC
+0A54 C2B2             1785                     CLR     RS
+0A56 A880             1786                     MOV     R0, io_lcd
+0A58 7494             1787                     MOV     A, #94H
+0A5A 1209A8           1788                     LCALL   COMNWRT
+0A5D 120BEC           1789                     LCALL   DELAY_5MS
+0A60 D2B2             1790                     SETB    RS
+0A62 D0E0             1791                     POP     ACC
+0A64 D000             1792                     POP     0
+                      1793
+0A66 22               1794                     RET
+                      1795
+                      1796     ;================================================================================
+                      1797     ;| Put string on line 3 of the LCD w/ cursor blinking                           |
+                      1798     ;================================================================================
+                      1799     PUT_LINE3_CB:
+0A67 C000             1800                     PUSH    0
+0A69 C0E0             1801                     PUSH    ACC
+0A6B C2B2             1802                     CLR     RS
+0A6D A880             1803                     MOV     R0, io_lcd
+0A6F 7494             1804                     MOV     A, #94H                         ;DDRAM ADDRESS
+0A71 1209A8           1805                     LCALL   COMNWRT
+0A74 120BEC           1806                     LCALL   DELAY_5MS
+0A77 740F             1807                     MOV     A, #0FH                         ;CURSOR BLINKING
+0A79 1209A8           1808                     LCALL   COMNWRT
+0A7C 120BF9           1809                     LCALL   DELAY_1MS
+0A7F D2B2             1810                     SETB    RS
+0A81 D0E0             1811                     POP     ACC
+0A83 D000             1812                     POP     0
+                      1813
+0A85 22               1814                     RET
+                      1815     ;================================================================================
+                      1816     ;| Put string on line 4 of the LCD                                      |
+                      1817     ;================================================================================
+                      1818     PUT_LINE4:
+0A86 C000             1819                     PUSH    0
+0A88 C0E0             1820                     PUSH    ACC
+0A8A A880             1821                     MOV     R0, io_lcd
+0A8C C2B2             1822                     CLR     RS
+0A8E 74D4             1823                     MOV     A, #0D4H
+0A90 1209A8           1824                     LCALL   COMNWRT
+0A93 120BEC           1825                     LCALL   DELAY_5MS
+0A96 740C             1826                     MOV     A, #0CH
+0A98 1209A8           1827                     LCALL   COMNWRT
+0A9B 120BF9           1828                     LCALL   DELAY_1MS
+0A9E D2B2             1829                     SETB    RS
+0AA0 D0E0             1830                     POP     ACC
+0AA2 D000             1831                     POP     0
+0AA4 22               1832                     RET
+                      1833
+                      1834     ;================================================================================
+                      1835     ;| Put string on line 4 of the LCD w/ cursor blinking                           |
+                      1836     ;================================================================================
+                      1837     PUT_LINE4_CB:
+0AA5 C000             1838                     PUSH    0
+0AA7 C0E0             1839                     PUSH    ACC
+0AA9 A880             1840                     MOV     R0, io_lcd
+0AAB C2B2             1841                     CLR     RS
+0AAD 74D4             1842                     MOV     A, #0D4H
+0AAF 1209A8           1843                     LCALL   COMNWRT
+0AB2 120BEC           1844                     LCALL   DELAY_5MS
+0AB5 740F             1845                     MOV     A, #0FH
+0AB7 1209A8           1846                     LCALL   COMNWRT
+0ABA 120BF9           1847                     LCALL   DELAY_1MS
+0ABD D2B2             1848                     SETB    RS
+0ABF D0E0             1849                     POP     ACC
+0AC1 D000             1850                     POP     0
+0AC3 22               1851                     RET
+                      1852
+                      1853     ;================================================================================
+                      1854     ;| PRINTS ADDRESS OF DUMP ON LINE 3                                     |
+                      1855     ;================================================================================
+                      1856     PUT_ADDR:
+0AC4 C000             1857                     PUSH    0
+0AC6 C0E0             1858                     PUSH    ACC
+0AC8 A880             1859                     MOV     R0, io_lcd
+0ACA C2B2             1860                     CLR     RS
+0ACC 74A1             1861                     MOV     A, #0A1H
+0ACE 1209A8           1862                     LCALL   COMNWRT
+0AD1 120BEC           1863                     LCALL   DELAY_5MS
+0AD4 D2B2             1864                     SETB    RS
+0AD6 D0E0             1865                     POP     ACC
+0AD8 D000             1866                     POP     0
+0ADA 22               1867                     RET
+                      1868
+                      1869     ;================================================================================
+                      1870     ;| STARTINGS PRINTING AT THE DDRAM VALUE OF A BEFORE ENTERING SUBROUTINE        |
+                      1871     ;================================================================================
+                      1872     PUT_FLEX:
+0ADB C000             1873                     PUSH    0
+0ADD C0E0             1874                     PUSH    ACC
+0ADF A880             1875                     MOV     R0, io_lcd
+0AE1 C2B2             1876                     CLR     RS
+0AE3 1209A8           1877                     LCALL   COMNWRT
+0AE6 120BEC           1878                     LCALL   DELAY_5MS
+0AE9 D2B2             1879                     SETB    RS
+0AEB D0E0             1880                     POP     ACC
+0AED D000             1881                     POP     0
+0AEF 22               1882                     RET
+                      1883
+                      1884     ;GETBYTE grabs two key presses and combines them into a single byte value
+                      1885     ;the byte value will be returned in R1, or is available on key_out
+                      1886     ;================================================================================
+                      1887     ;| grabs two key presses and combines them into a single byte value, returns    |
+                      1888     ;| in A                                                                         |
+                      1889     ;================================================================================
+                      1890     GETBYTE:
+0AF0 C000             1891                     push    0
+0AF2 C007             1892                     PUSH    7
+0AF4 120754           1893                     LCALL   promptKeypad            ;Get first digit of block
+0AF7 120B7B           1894                     LCALL   PRINTCHAR
+                      1895                     ;mov    A, keypad               ;move first digit to A
+0AFA FF               1896                     MOV     R7, A                   ;SAVE VALUE
+0AFB 9440             1897                     SUBB    A, #40h
+0AFD 5005             1898                     jnc     letter
+0AFF EF               1899                     mov     A, R7                   ;else, regrab the output from key
+0B00 540F             1900                     anl     A, #0fh                 ;mask to get data
+0B02 8005             1901                     sjmp    rotate
+0B04 EF               1902             letter: mov     A, R7                   ;if letter regrab, data
+0B05 540F             1903                     anl     A, #0fh                 ;mask off lower half
+                      1904                     ;add    A, #09h                 ;add 09h to normalize
+0B07 2409             1905                     ADD     A, #09H                 ;it is normalize
+0B09 23               1906             rotate: RL      A
+0B0A 23               1907                     RL      A
+0B0B 23               1908                     RL      A
+0B0C 23               1909                     RL      A
+0B0D F8               1910                     mov     R0, A
+0B0E 120754           1911             invalid:LCALL   promptKeypad            ;Get first digit of block
+0B11 120B7B           1912                     LCALL   PRINTCHAR
+                      1913                     ;mov    A, KEYPAD               ;move first digit to A
+0B14 FF               1914                     MOV     R7, A
+0B15 9440             1915                     SUBB    A, #40h
+0B17 5005             1916                     jnc     letter2
+0B19 EF               1917                     mov     A, R7           ;else, regrab the output from key
+0B1A 540F             1918                     anl     A, #0fh                 ;mask to get data
+0B1C 8007             1919                     sjmp    here13
+0B1E EF               1920             letter2:mov     A, R7           ;if letter regrab, data
+0B1F 540F             1921                     anl     A, #0fh                 ;mask off lower half
+                      1922                     ;add    A, #09h                 ;add 09h to normalize
+0B21 2409             1923                     ADD     A, #09H
+0B23 540F             1924                     anl     A, #0fh
+0B25 48               1925             here13: orl     A, R0                   ;Now both bits are in A
+0B26 F9               1926                     mov     R1, A                   ;To preserve block size in R1
+0B27 D007             1927                     POP     7
+0B29 D000             1928                     pop     0
+0B2B 22               1929                     RET
+                      1930
+                      1931     ;================================================================================
+                      1932     ;| Print a string to the LCD                                                    |
+                      1933     ;================================================================================
+                      1934     printString:
+0B2C E4               1935                     CLR     A
+0B2D 93               1936                     movc    A, @A+DPTR
+0B2E 6006             1937                     JZ      pExit
+0B30 120B7B           1938                     LCALL   printChar
+0B33 A3               1939                     INC     DPTR
+0B34 80F6             1940                     SJMP    printString
+0B36 22               1941     pExit:          RET
+                      1942     ;================================================================================
+                      1943     ;| Print a byte in A to the LCD                                                 |
+                      1944     ;================================================================================
+                      1945     printByte:
+0B37 C0E0             1946                     push    0E0h
+0B39 C001             1947                     push    1
+0B3B E0               1948                     MOVX    A, @DPTR
+0B3C F5F0             1949                     MOV     B, A
+0B3E 54F0             1950                     ANL     A, #0f0h
+0B40 03               1951                     rr      A
+0B41 03               1952                     rr      A
+0B42 03               1953                     rr      A
+0B43 03               1954                     rr      A
+0B44 FF               1955                     mov     R7, A                   ;To save the raw value
+0B45 C3               1956                     CLR     C
+0B46 940A             1957                     SUBB    A, #0Ah                 ;check if letter
+0B48 5008             1958                     jnc     letter13
+0B4A EF               1959                     mov     A, R7                   ;Reload A
+0B4B 4430             1960                     orl     A, #30h                 ;Should have ascii number value now(03h --> 33h)
+0B4D 120B7B           1961                     LCALL   printChar                       ;put character to LCD
+0B50 8008             1962                     sjmp    next1
+0B52 EF               1963     letter13:       mov     A, R7
+0B53 4430             1964                     orl     A, #30h                 ;ascii non-normalized
+0B55 2407             1965                     add     A, #07h                 ;ascii normalized (3Fh --> 46h)
+0B57 120B7B           1966                     LCALL   printChar
+0B5A E5F0             1967     next1:          mov     A, B
+0B5C 540F             1968                     anl     A, #0fh
+0B5E FF               1969                     mov     R7, A                   ;to copy before check
+0B5F C3               1970                     CLR     C
+0B60 940A             1971                     subb    A, #0Ah
+0B62 5008             1972                     jnc     letter14
+0B64 EF               1973                     mov     A, R7
+0B65 4430             1974                     orl     A, #30h
+0B67 120B7B           1975                     LCALL   printChar
+0B6A 8008             1976                     sjmp    finish1
+0B6C EF               1977     letter14:       mov     A, R7
+0B6D 4430             1978                     orl     A, #30h
+0B6F 2407             1979                     add     A, #07h
+0B71 120B7B           1980                     LCALL   printChar                       ;print the normalized second character
+0B74 7420             1981     finish1:        mov     A, #20h
+0B76 D001             1982                     pop     1
+0B78 D0E0             1983                     pop     0E0h
+                      1984
+0B7A 22               1985                     RET
+                      1986     ;================================================================================
+                      1987     ;| Print a character to the LCD IN ACC                                          |
+                      1988     ;================================================================================
+                      1989     printChar:
+0B7B C000             1990                     push    0
+0B7D D2B2             1991                     SETB    RS
+0B7F C2B1             1992                     CLR     RW
+0B81 7880             1993                     MOV     R0, #io_lcd
+0B83 D2B0             1994                     SETB    P3.0
+0B85 F2               1995                     MOVX    @R0, A
+0B86 120BF9           1996                     LCALL   delay_1MS
+0B89 C2B0             1997                     CLR     P3.0
+0B8B D000             1998                     pop     0
+0B8D 22               1999                     RET
+                      2000     ;================================================================================
+                      2001     ;| A delay for .5s                                                              |
+                      2002     ;================================================================================
+                      2003     halfSecondDelay:
+0B8E 120BC8           2004                     LCALL   delay_100ms
+0B91 120BC8           2005                     LCALL   delay_100ms
+0B94 120BC8           2006                     LCALL   delay_100ms
+0B97 120BC8           2007                     LCALL   delay_100ms
+0B9A 120BC8           2008                     LCALL   delay_100ms
+0B9D 22               2009                     RET
+                      2010     ;================================================================================
+                      2011     ;| Procedure that sends A to data bus and whats in DPTR to the address bus      |
+                      2012     ;================================================================================
+                      2013     ioToggle:
+0B9E D2B0             2014                     SETB    P3.0
+0BA0 F2               2015                     MOVX    @R0, A
+0BA1 C2B0             2016                     CLR     P3.0
+0BA3 22               2017                     RET
+                      2018     ;================================================================================
+                      2019     ;| clear hold bit on rtc                                                        |
+                      2020     ;================================================================================
+                      2021     setHold:
+0BA4 C000             2022                     PUSH    0
+0BA6 C0E0             2023                     PUSH    ACC
+                      2024
+0BA8 784D             2025                     MOV     R0, #4DH                        ;SET THE HOLD BIT
+0BAA 7405             2026                     MOV     A, #05H
+0BAC D2B0             2027                     SETB    P3.0
+0BAE F2               2028                     MOVX    @R0, A
+0BAF C2B0             2029                     CLR     P3.0
+                      2030
+0BB1 D0E0             2031                     POP     ACC
+0BB3 D000             2032                     POP     0
+0BB5 22               2033                     RET
+                      2034     ;================================================================================
+                      2035     ;| clear hold bit on rtc                                                        |
+                      2036     ;================================================================================
+                      2037     clearHold:
+0BB6 C000             2038                     PUSH    0
+0BB8 C0E0             2039                     PUSH    ACC
+                      2040
+0BBA 784D             2041                     MOV     R0, #4DH                        ;CLR THE HOLD BIT
+0BBC 7404             2042                     MOV     A, #04H
+0BBE D2B0             2043                     SETB    P3.0
+0BC0 F2               2044                     MOVX    @R0, A
+0BC1 C2B0             2045                     CLR     P3.0
+                      2046
+0BC3 D0E0             2047                     POP     ACC
+0BC5 D000             2048                     POP     0
+0BC7 22               2049                     RET
+                      2050     ;================================================================================
+                      2051     ;| Iterative 100ms delay using delay_1ms                                        |
+                      2052     ;================================================================================
+                      2053     DELAY_100ms:
+                      2054
+0BC8 C003             2055                     PUSH    3
+0BCA 7B61             2056                     MOV     R3,#97
+0BCC 120BF9           2057             HERE7:  LCALL   DELAY_1ms
+0BCF DBFB             2058                     DJNZ    R3,HERE7
+0BD1 D003             2059                     POP     3
+0BD3 22               2060                     RET
+                      2061     ;================================================================================
+                      2062     ;| Iterative 50ms delay using delay_1ms                                         |
+                      2063     ;================================================================================
+                      2064     DELAY_50ms:
+                      2065
+0BD4 C003             2066                     PUSH    3
+0BD6 7B32             2067                     MOV     R3,#50
+0BD8 120BF9           2068             HERE8:  LCALL   DELAY_1ms
+0BDB DB07             2069                     DJNZ    R3,HERE2
+0BDD D003             2070                     POP     3
+0BDF 22               2071                     RET
+                      2072     ;================================================================================
+                      2073     ;| Iterative 10ms delay using delay_1ms                                         |
+                      2074     ;================================================================================
+                      2075     DELAY_10ms:
+                      2076
+0BE0 C003             2077                     PUSH    3
+0BE2 7B0A             2078                     MOV     R3,#10
+0BE4 120BF9           2079             HERE2:  LCALL   DELAY_1ms
+0BE7 DBFB             2080                     DJNZ    R3,HERE2
+0BE9 D003             2081                     POP     3
+0BEB 22               2082                     RET
+                      2083     ;================================================================================
+                      2084     ;| Iterative 5ms delay using delay_1ms                                          |
+                      2085     ;================================================================================
+                      2086     DELAY_5ms:
+0BEC C003             2087                     PUSH    3
+0BEE 7405             2088                     MOV     A, #5
+0BF0 FB               2089                     MOV     R3, A
+0BF1 120BF9           2090             HERE3:  LCALL   DELAY_1MS
+0BF4 DBFB             2091                     DJNZ    R3, HERE3
+0BF6 D003             2092                     POP     3
+0BF8 22               2093                     RET
+                      2094     ;================================================================================
+                      2095     ;| 1ms delay                                                                    |
+                      2096     ;================================================================================
+                      2097     DELAY_1ms:
+0BF9 C003             2098                     PUSH    3
+0BFB C004             2099                     PUSH    4
+                      2100
+0BFD 7B21             2101                     MOV     R3,#33
+                      2102
+0BFF 7C0E             2103             HERE6:  MOV     R4,#14
+0C01 DCFE             2104             HERE5:  DJNZ    R4,HERE5
+0C03 DBFA             2105                     DJNZ    R3,HERE6
+0C05 D004             2106                     POP     4
+0C07 D003             2107                     POP     3
+0C09 22               2108                     RET
+                      2109     ;================================================================================
+                      2110     ;| Look up tables & Strings                                                     |
+                      2111     ;================================================================================
+                      2112     ;login strings
+0C0A 2050726573       2113     loginMSG:       db      ' Press [1] to Login \0'
+     73205B315D
+     20746F204C
+     6F67696E20
+     00
+0C1F 2020202020       2114     goodbye:        db      '     Logged Out     \0'
+     4C6F676765
+     64204F7574
+     2020202020
+     00
+0C34 4F2D2D2D2D       2115     LOGINART1:      DB      'O------------------O\0'
+     2D2D2D2D2D
+     2D2D2D2D2D
+     2D2D2D2D4F
+     00
+0C49 7C20202047       2116     osName:         db      '|   Goberling OS   |\0'
+     6F6265726C
+     696E67204F
+     532020207C
+     00
+0C5E 4F2D2D2D2D       2117     LOGINART2:      DB      'O------------------O\0'
+     2D2D2D2D2D
+     2D2D2D2D2D
+     2D2D2D2D4F
+     00
+0C73 3420446967       2118     DIGITMSG:       DB      '4 Digits (xxxxh)\0'
+     6974732028
+     7878787868
+     2900
+0C84 3220446967       2119     DIGITMSG1:      DB      '2 Digits (xxh)\0'
+     6974732028
+     7878682900
+                      2120
+                      2121     ;program strings
+0C93 456E746572       2122     bBlock:         db      'Enter Block Size\0'
+     20426C6F63
+     6B2053697A
+     6500
+0CA4 456E746572       2123     bSource:        db      'Enter Source Addr.\0'
+     20536F7572
+     6365204164
+     64722E00
+0CB7 456E746572       2124     bDest:          db      'Enter Dest. Addr.\0'
+     2044657374
+     2E20416464
+     722E00
+0CC9 4D6F766520       2125     bdone:          db      'Move Complete.\0'
+     436F6D706C
+     6574652E00
+0CD8 456E746572       2126     eSource:        db      'Enter Source Addr.\0'
+     20536F7572
+     6365204164
+     64722E00
+0CEB 456E746572       2127     fBlock:         db      'Enter Block Size\0'
+     20426C6F63
+     6B2053697A
+     6500
+0CFC 456E746572       2128     replace:        db      'Enter Desired value\0'
+     2044657369
+     7265642076
+     616C756500
+0D10 50726F6772       2129     exitmsg:        db      'Program Exited\0'
+     616D204578
+     6974656400
+0D1F 5B305D4E65       2130     user1:          db      '[0]Next Addr \0'
+     7874204164
+     64722000
+0D2D 5B315D4578       2131     user2:          db      '[1]Exit \0''
+     69742000
+0D36 456E746572       2132     FindByte:       db      'Enter value to Find\0'
+     2076616C75
+     6520746F20
+     46696E6400
+0D4A 466F756E64       2133     FoundByte:      db      'Found value @ \0'
+     2076616C75
+     6520402000
+0D59 4279746520       2134     nFound:         db      'Byte Not Found\0'
+     4E6F742046
+     6F756E6400
+0D68 456E64206F       2135     memend:         db      'End of Memory (FFh)\0'
+     66204D656D
+     6F72792028
+     4646682900
+0D7C 5B325D2045       2136     exitmsg2:       db      '[2] Exit\0'
+     78697400
+0D85 5B305D204E       2137     DUMPPROMPT:     DB      '[0] Next \0'
+     6578742000
+0D8F 5B315D2050       2138     DUMPPROMPT2:    DB      '[1] Prev.   [2] Exit\0'
+     7265762E20
+     20205B325D
+     2045786974
+     00
+                      2139
+                      2140     ;password strings
+0DA4 456E746572       2141     myPasscode:     db      'Enter 4-Digit PIN: \0'
+     20342D4469
+     6769742050
+     494E3A2000
+0DB8 5B415D2053       2142     VERIFYINPUT:    DB      '[A] Submit  [D] Redo\0'
+     75626D6974
+     20205B445D
+     205265646F
+     00
+0DCD 496E636F72       2143     incorrectCode:  db      'Incorrect Passcode\0'
+     7265637420
+     5061737363
+     6F646500
+0DE0 506C656173       2144     tryAgain:       db      'Please Try Again\0'
+     6520547279
+     2041676169
+     6E00
+0DF1 57656C636F       2145     pwSuccess:      db      'Welcome Back\0'
+     6D65204261
+     636B00
+0DFE 5379737465       2146     lockedMsg:      db      'System Locked.\0'
+     6D204C6F63
+     6B65642E00
+0E0D 5472696573       2147     attempts:       db      'Tries Left: \0'
+     204C656674
+     3A2000
+                      2148
+                      2149     ;name strings
+0E1A 4D69636861       2150     michael:        db      'Michael!\0'
+     656C2100
+0E23 436F6C6C69       2151     collin:         db      'Collin!\0'
+     6E2100
+0E2B 52696C6579       2152     riley:          db      'Riley!\0'
+     2100
+0E32 50726F662E       2153     sharif:         db      'Prof. Sharif!\0'
+     2053686172
+     69662100
+0E40 4A65666621       2154     jeff:           db      'Jeff!\0'
+     00
+                      2155
+                      2156     ;menu strings
+0E46 4D69636861       2157     myName:         db      'Michael Goberling\0'
+     656C20476F
+     6265726C69
+     6E6700
+0E58 4345454E20       2158     myClass:        db      'CEEN 4330 \0'
+     3433333020
+     00
+0E63 5B425D204D       2159     menu1:          db      '[B] Move    [D] Dump\0'
+     6F76652020
+     20205B445D
+     2044756D70
+     00
+0E78 5B455D2045       2160     menu2:          db      '[E] Edit    [F] Find\0'
+     6469742020
+     20205B465D
+     2046696E64
+     00
+0E8D 5B315D204C       2161     logout:         db      '[1] Logout  [7] 7Seg\0'
+     6F676F7574
+     20205B375D
+     2037536567
+     00
+0EA2 5B52756E74       2162     runtimeMenu:    db      '[Runtime] \0'
+     696D655D20
+     00
+0EAD 5B54656D70       2163     tempMenu:       db      '[Temp] \0'
+     5D2000
+                      2164
+                      2165     ;test strings
+0EB5 4D6F766520       2166     test1:          db      'Move Selected.\0'
+     53656C6563
+     7465642E00
+0EC4 44756D7020       2167     test2:          db      'Dump Selected.\0'
+     53656C6563
+     7465642E00
+0ED3 4564697420       2168     test3:          db      'Edit Selected.\0'
+     53656C6563
+     7465642E00
+0EE2 46696E6420       2169     test4:          db      'Find Selected.\0'
+     53656C6563
+     7465642E00
+0EF1 3753656720       2170     sevensegmsg:    db      '7Seg Selected.\0'
+     53656C6563
+     7465642E00
+                      2171
+                      2172     ;Profiles:
+                      2173     ;       Michael 0
+                      2174     ;       Collin  1
+                      2175     ;       Riley   2
+                      2176     ;       Sharif  3
+                      2177     ;       Jeff    4
+                      2178
+                      2179     ;profiles      ;0        ;1        ;2        ;3        ;4
+0F00 9701342511       2180     pwList: db      97h, 01h, 34H, 25H, 11H, 11H, 43H, 30H, 60H, 73H, 0
+     1143306073
+     00
+                      2181     ;compare valid passwords 2 bytes at a time
+                      2182
+                      2183     ;matrix keypad LUT
+0F0B 31323341         2184     KCODE0: db      '1', '2', '3', 'A'
+0F0F 34353642         2185     KCODE1: db      '4', '5', '6', 'B'
+0F13 37383943         2186     KCODE2: db      '7', '8', '9', 'C'
+0F17 46304544         2187     KCODE3: db      'F', '0', 'E', 'D'
+                      2188                     END
+ASSEMBLY COMPLETE, NO ERRORS FOUND, NO WARNINGS
+
+
+SYMBOL TABLE:
+??MCU_8051_IDE . . . . . . . . . . .  N  NUMB  8051H  NOT USED
+??VERSION. . . . . . . . . . . . . .  N  NUMB  0149H  NOT USED
+AC . . . . . . . . . . . . . . . . .  B  ADDR  00D6H  NOT USED
+ACC. . . . . . . . . . . . . . . . .  D  ADDR  00E0H
+ACSR . . . . . . . . . . . . . . . .  D  ADDR  0097H  NOT USED
+ADCF . . . . . . . . . . . . . . . .  D  ADDR  00F6H  NOT USED
+ADCLK. . . . . . . . . . . . . . . .  D  ADDR  00F2H  NOT USED
+ADCON. . . . . . . . . . . . . . . .  D  ADDR  00F3H  NOT USED
+ADDH . . . . . . . . . . . . . . . .  D  ADDR  00F5H  NOT USED
+ADDL . . . . . . . . . . . . . . . .  D  ADDR  00F4H  NOT USED
+ATTEMPTS . . . . . . . . . . . . . .  C  ADDR  0E0DH
+AUXR . . . . . . . . . . . . . . . .  D  ADDR  008EH  NOT USED
+AUXR1. . . . . . . . . . . . . . . .  D  ADDR  00A2H  NOT USED
+B. . . . . . . . . . . . . . . . . .  D  ADDR  00F0H
+BACK . . . . . . . . . . . . . . . .  C  ADDR  0174H
+BBLOCK . . . . . . . . . . . . . . .  C  ADDR  0C93H
+BDATA. . . . . . . . . . . . . . . .  C  ADDR  00C4H
+BDATA1 . . . . . . . . . . . . . . .  C  ADDR  0339H  NOT USED
+BDEST. . . . . . . . . . . . . . . .  C  ADDR  0CB7H
+BDONE. . . . . . . . . . . . . . . .  C  ADDR  0CC9H
+BDRCON . . . . . . . . . . . . . . .  D  ADDR  009BH  NOT USED
+BDRCON_1 . . . . . . . . . . . . . .  D  ADDR  009CH  NOT USED
+BRL. . . . . . . . . . . . . . . . .  D  ADDR  009AH  NOT USED
+BSIZEPROMPT. . . . . . . . . . . . .  C  ADDR  01D7H
+BSOURCE. . . . . . . . . . . . . . .  C  ADDR  0CA4H
+BUSYREADY. . . . . . . . . . . . . .  C  ADDR  096AH  NOT USED
+CCAP0H . . . . . . . . . . . . . . .  D  ADDR  00FAH  NOT USED
+CCAP0L . . . . . . . . . . . . . . .  D  ADDR  00EAH  NOT USED
+CCAP1H . . . . . . . . . . . . . . .  D  ADDR  00FBH  NOT USED
+CCAP1L . . . . . . . . . . . . . . .  D  ADDR  00EBH  NOT USED
+CCAP2H . . . . . . . . . . . . . . .  D  ADDR  00FCH  NOT USED
+CCAP3H . . . . . . . . . . . . . . .  D  ADDR  00FDH  NOT USED
+CCAP4H . . . . . . . . . . . . . . .  D  ADDR  00FEH  NOT USED
+CCAPL2H. . . . . . . . . . . . . . .  D  ADDR  00FCH  NOT USED
+CCAPL2L. . . . . . . . . . . . . . .  D  ADDR  00ECH  NOT USED
+CCAPL3H. . . . . . . . . . . . . . .  D  ADDR  00FDH  NOT USED
+CCAPL3L. . . . . . . . . . . . . . .  D  ADDR  00EDH  NOT USED
+CCAPL4H. . . . . . . . . . . . . . .  D  ADDR  00FEH  NOT USED
+CCAPL4L. . . . . . . . . . . . . . .  D  ADDR  00EEH  NOT USED
+CCAPM0 . . . . . . . . . . . . . . .  D  ADDR  00DAH  NOT USED
+CCAPM1 . . . . . . . . . . . . . . .  D  ADDR  00DBH  NOT USED
+CCAPM2 . . . . . . . . . . . . . . .  D  ADDR  00DCH  NOT USED
+CCAPM3 . . . . . . . . . . . . . . .  D  ADDR  00DDH  NOT USED
+CCAPM4 . . . . . . . . . . . . . . .  D  ADDR  00DEH  NOT USED
+CCF0 . . . . . . . . . . . . . . . .  B  ADDR  00D8H  NOT USED
+CCF1 . . . . . . . . . . . . . . . .  B  ADDR  00D9H  NOT USED
+CCF2 . . . . . . . . . . . . . . . .  B  ADDR  00DAH  NOT USED
+CCF3 . . . . . . . . . . . . . . . .  B  ADDR  00DBH  NOT USED
+CCF4 . . . . . . . . . . . . . . . .  B  ADDR  00DCH  NOT USED
+CCON . . . . . . . . . . . . . . . .  D  ADDR  00D8H  NOT USED
+CFINT. . . . . . . . . . . . . . . .  C  ADDR  0033H  NOT USED
+CH . . . . . . . . . . . . . . . . .  D  ADDR  00F9H  NOT USED
+CHECKBUSY. . . . . . . . . . . . . .  C  ADDR  094CH  NOT USED
+CHECKCOLLIN. . . . . . . . . . . . .  C  ADDR  0723H
+CHECKJEFF. . . . . . . . . . . . . .  C  ADDR  073BH
+CHECKPROFILE . . . . . . . . . . . .  C  ADDR  0718H
+CHECKPW. . . . . . . . . . . . . . .  C  ADDR  06AAH
+CHECKRILEY . . . . . . . . . . . . .  C  ADDR  072BH
+CHECKSHARIF. . . . . . . . . . . . .  C  ADDR  0733H
+CKCON. . . . . . . . . . . . . . . .  D  ADDR  008FH  NOT USED
+CKCON0 . . . . . . . . . . . . . . .  D  ADDR  008FH  NOT USED
+CKRL . . . . . . . . . . . . . . . .  D  ADDR  0097H  NOT USED
+CKSEL. . . . . . . . . . . . . . . .  D  ADDR  0085H  NOT USED
+CL . . . . . . . . . . . . . . . . .  D  ADDR  00E9H  NOT USED
+CLEARHOLD. . . . . . . . . . . . . .  C  ADDR  0BB6H  NOT USED
+CLEAR_LCD. . . . . . . . . . . . . .  C  ADDR  09BFH
+CLKREG . . . . . . . . . . . . . . .  D  ADDR  008FH  NOT USED
+CMOD . . . . . . . . . . . . . . . .  D  ADDR  00D9H  NOT USED
+COLLIN . . . . . . . . . . . . . . .  C  ADDR  0E23H
+COMNWRT. . . . . . . . . . . . . . .  C  ADDR  09A8H
+COMPARE1 . . . . . . . . . . . . . .  C  ADDR  0044H
+COMPARE2 . . . . . . . . . . . . . .  C  ADDR  005EH
+COMPARE3 . . . . . . . . . . . . . .  C  ADDR  0078H
+COMPARE4 . . . . . . . . . . . . . .  C  ADDR  0092H
+COMPARE5 . . . . . . . . . . . . . .  C  ADDR  00A7H
+CONT1. . . . . . . . . . . . . . . .  C  ADDR  0408H
+CONT10 . . . . . . . . . . . . . . .  C  ADDR  04D2H
+CONT11 . . . . . . . . . . . . . . .  C  ADDR  027AH
+CONT13 . . . . . . . . . . . . . . .  C  ADDR  026CH
+CONT14 . . . . . . . . . . . . . . .  C  ADDR  0217H
+CONT15 . . . . . . . . . . . . . . .  C  ADDR  0271H
+CONT16 . . . . . . . . . . . . . . .  C  ADDR  02ACH
+CONT17 . . . . . . . . . . . . . . .  C  ADDR  02B8H
+CONT18 . . . . . . . . . . . . . . .  C  ADDR  02E5H
+CONT22 . . . . . . . . . . . . . . .  C  ADDR  0628H
+CONT26 . . . . . . . . . . . . . . .  C  ADDR  00F5H
+CONT27 . . . . . . . . . . . . . . .  C  ADDR  00E3H
+CONT28 . . . . . . . . . . . . . . .  C  ADDR  012CH
+CONT29 . . . . . . . . . . . . . . .  C  ADDR  011AH
+CONT3. . . . . . . . . . . . . . . .  C  ADDR  018DH
+CONT30 . . . . . . . . . . . . . . .  C  ADDR  016BH
+CONT31 . . . . . . . . . . . . . . .  C  ADDR  0159H
+CONT32 . . . . . . . . . . . . . . .  C  ADDR  0132H
+CONT33 . . . . . . . . . . . . . . .  C  ADDR  020EH
+CONT34 . . . . . . . . . . . . . . .  C  ADDR  01D1H
+CONT35 . . . . . . . . . . . . . . .  C  ADDR  01BFH
+CONT36 . . . . . . . . . . . . . . .  C  ADDR  0208H
+CONT37 . . . . . . . . . . . . . . .  C  ADDR  01F6H
+CONT38 . . . . . . . . . . . . . . .  C  ADDR  035FH
+CONT39 . . . . . . . . . . . . . . .  C  ADDR  0359H
+CONT4. . . . . . . . . . . . . . . .  C  ADDR  0185H
+CONT40 . . . . . . . . . . . . . . .  C  ADDR  0347H
+CONT41 . . . . . . . . . . . . . . .  C  ADDR  0445H
+CONT42 . . . . . . . . . . . . . . .  C  ADDR  0433H
+CONT43 . . . . . . . . . . . . . . .  C  ADDR  047CH
+CONT44 . . . . . . . . . . . . . . .  C  ADDR  046AH
+CONT45 . . . . . . . . . . . . . . .  C  ADDR  0482H
+CONT5. . . . . . . . . . . . . . . .  C  ADDR  0189H
+CONT6. . . . . . . . . . . . . . . .  C  ADDR  013AH
+CONT7. . . . . . . . . . . . . . . .  C  ADDR  048BH
+CONT8. . . . . . . . . . . . . . . .  C  ADDR  04C8H
+CONT9. . . . . . . . . . . . . . . .  C  ADDR  04CDH
+CONTPRINT. . . . . . . . . . . . . .  C  ADDR  0604H  NOT USED
+CPRL2. . . . . . . . . . . . . . . .  B  ADDR  00C8H  NOT USED
+CR . . . . . . . . . . . . . . . . .  B  ADDR  00DEH  NOT USED
+CT2. . . . . . . . . . . . . . . . .  B  ADDR  00C9H  NOT USED
+CY . . . . . . . . . . . . . . . . .  B  ADDR  00D7H  NOT USED
+DECHBYTE . . . . . . . . . . . . . .  C  ADDR  02F5H
+DECHBYTE2. . . . . . . . . . . . . .  C  ADDR  02FDH
+DELAY_100MS. . . . . . . . . . . . .  C  ADDR  0BC8H
+DELAY_10MS . . . . . . . . . . . . .  C  ADDR  0BE0H  NOT USED
+DELAY_1MS. . . . . . . . . . . . . .  C  ADDR  0BF9H
+DELAY_50MS . . . . . . . . . . . . .  C  ADDR  0BD4H
+DELAY_5MS. . . . . . . . . . . . . .  C  ADDR  0BECH
+DIGITMSG . . . . . . . . . . . . . .  C  ADDR  0C73H
+DIGITMSG1. . . . . . . . . . . . . .  C  ADDR  0C84H
+DISPLAYMENU. . . . . . . . . . . . .  C  ADDR  0888H
+DISPLAYNAME. . . . . . . . . . . . .  C  ADDR  086CH  NOT USED
+DISPLAYPASSCODE. . . . . . . . . . .  C  ADDR  0632H
+DONE . . . . . . . . . . . . . . . .  C  ADDR  0285H
+DONE2. . . . . . . . . . . . . . . .  C  ADDR  0413H
+DONE3. . . . . . . . . . . . . . . .  C  ADDR  02A3H
+DOOVER . . . . . . . . . . . . . . .  C  ADDR  06CBH
+DP0H . . . . . . . . . . . . . . . .  D  ADDR  0083H  NOT USED
+DP0L . . . . . . . . . . . . . . . .  D  ADDR  0082H  NOT USED
+DP1H . . . . . . . . . . . . . . . .  D  ADDR  0085H  NOT USED
+DP1L . . . . . . . . . . . . . . . .  D  ADDR  0084H  NOT USED
+DPH. . . . . . . . . . . . . . . . .  D  ADDR  0083H
+DPL. . . . . . . . . . . . . . . . .  D  ADDR  0082H
+DUMP . . . . . . . . . . . . . . . .  C  ADDR  021BH
+DUMPPROMPT . . . . . . . . . . . . .  C  ADDR  0D85H
+DUMPPROMPT2. . . . . . . . . . . . .  C  ADDR  0D8FH
+EA . . . . . . . . . . . . . . . . .  B  ADDR  00AFH  NOT USED
+EC . . . . . . . . . . . . . . . . .  B  ADDR  00AEH  NOT USED
+EDIT . . . . . . . . . . . . . . . .  C  ADDR  0360H
+EECON. . . . . . . . . . . . . . . .  D  ADDR  0096H  NOT USED
+EINPUT . . . . . . . . . . . . . . .  C  ADDR  03F7H
+ENDDUMP. . . . . . . . . . . . . . .  C  ADDR  0304H
+ENDLOGIN . . . . . . . . . . . . . .  C  ADDR  0631H
+ENDPROMPTMOVE. . . . . . . . . . . .  C  ADDR  0171H
+ES . . . . . . . . . . . . . . . . .  B  ADDR  00ACH  NOT USED
+ESOURCE. . . . . . . . . . . . . . .  C  ADDR  0CD8H
+ET0. . . . . . . . . . . . . . . . .  B  ADDR  00A9H  NOT USED
+ET1. . . . . . . . . . . . . . . . .  B  ADDR  00ABH  NOT USED
+ET2. . . . . . . . . . . . . . . . .  B  ADDR  00ADH  NOT USED
+EX0. . . . . . . . . . . . . . . . .  B  ADDR  00A8H  NOT USED
+EX1. . . . . . . . . . . . . . . . .  B  ADDR  00AAH  NOT USED
+EXEN2. . . . . . . . . . . . . . . .  B  ADDR  00CBH  NOT USED
+EXF2 . . . . . . . . . . . . . . . .  B  ADDR  00CEH  NOT USED
+EXIT . . . . . . . . . . . . . . . .  C  ADDR  0747H
+EXIT1. . . . . . . . . . . . . . . .  C  ADDR  081EH
+EXITMSG. . . . . . . . . . . . . . .  C  ADDR  0D10H
+EXITMSG2 . . . . . . . . . . . . . .  C  ADDR  0D7CH  NOT USED
+EXTI0. . . . . . . . . . . . . . . .  C  ADDR  0003H  NOT USED
+EXTI1. . . . . . . . . . . . . . . .  C  ADDR  0013H  NOT USED
+F0 . . . . . . . . . . . . . . . . .  B  ADDR  00D5H  NOT USED
+FBLOCK . . . . . . . . . . . . . . .  C  ADDR  0CEBH
+FE . . . . . . . . . . . . . . . . .  B  ADDR  009FH  NOT USED
+FIND . . . . . . . . . . . . . . . .  C  ADDR  04A9H
+FINDBYTE . . . . . . . . . . . . . .  C  ADDR  0D36H
+FINISH . . . . . . . . . . . . . . .  C  ADDR  0260H
+FINISH1. . . . . . . . . . . . . . .  C  ADDR  0B74H
+FINISH2. . . . . . . . . . . . . . .  C  ADDR  05C0H
+FLASH7SEG. . . . . . . . . . . . . .  C  ADDR  050CH  NOT USED
+FOREVER. . . . . . . . . . . . . . .  C  ADDR  00C2H
+FOUND. . . . . . . . . . . . . . . .  C  ADDR  04D5H
+FOUNDBYTE. . . . . . . . . . . . . .  C  ADDR  0D4AH
+GETBYTE. . . . . . . . . . . . . . .  C  ADDR  0AF0H
+GETPASSCODE. . . . . . . . . . . . .  C  ADDR  0642H
+GETRTC . . . . . . . . . . . . . . .  C  ADDR  0524H
+GETTEMP. . . . . . . . . . . . . . .  C  ADDR  0576H
+GOODBYE. . . . . . . . . . . . . . .  C  ADDR  0C1FH
+HALFSECONDDELAY. . . . . . . . . . .  C  ADDR  0B8EH
+HERE12 . . . . . . . . . . . . . . .  C  ADDR  035FH  NOT USED
+HERE13 . . . . . . . . . . . . . . .  C  ADDR  0B25H
+HERE14 . . . . . . . . . . . . . . .  C  ADDR  050BH
+HERE2. . . . . . . . . . . . . . . .  C  ADDR  0BE4H
+HERE3. . . . . . . . . . . . . . . .  C  ADDR  0BF1H
+HERE5. . . . . . . . . . . . . . . .  C  ADDR  0C01H
+HERE6. . . . . . . . . . . . . . . .  C  ADDR  0BFFH
+HERE7. . . . . . . . . . . . . . . .  C  ADDR  0BCCH
+HERE8. . . . . . . . . . . . . . . .  C  ADDR  0BD8H  NOT USED
+HEXTOASCII . . . . . . . . . . . . .  C  ADDR  05DBH
+IE . . . . . . . . . . . . . . . . .  D  ADDR  00A8H  NOT USED
+IE0. . . . . . . . . . . . . . . . .  B  ADDR  0089H  NOT USED
+IE1. . . . . . . . . . . . . . . . .  B  ADDR  008BH  NOT USED
+INCHBYTE . . . . . . . . . . . . . .  C  ADDR  02DDH
+INCHBYTE2. . . . . . . . . . . . . .  C  ADDR  02E3H
+INCORRECTCODE. . . . . . . . . . . .  C  ADDR  0DCDH
+INT0 . . . . . . . . . . . . . . . .  B  ADDR  00B2H  NOT USED
+INT1 . . . . . . . . . . . . . . . .  B  ADDR  00B3H  NOT USED
+INVALID. . . . . . . . . . . . . . .  C  ADDR  0B0EH  NOT USED
+IOTOGGLE . . . . . . . . . . . . . .  C  ADDR  0B9EH
+IO_LCD . . . . . . . . . . . . . . .  N  NUMB  0080H
+IO_RTC . . . . . . . . . . . . . . .  N  NUMB  0040H  NOT USED
+IO_SEVENSEG. . . . . . . . . . . . .  N  NUMB  0020H
+IO_TEMP. . . . . . . . . . . . . . .  N  NUMB  0010H  NOT USED
+IP . . . . . . . . . . . . . . . . .  D  ADDR  00B8H  NOT USED
+IPH. . . . . . . . . . . . . . . . .  D  ADDR  00B7H  NOT USED
+IPH0 . . . . . . . . . . . . . . . .  D  ADDR  00B7H  NOT USED
+IPH1 . . . . . . . . . . . . . . . .  D  ADDR  00B3H  NOT USED
+IPL0 . . . . . . . . . . . . . . . .  D  ADDR  00B8H  NOT USED
+IPL1 . . . . . . . . . . . . . . . .  D  ADDR  00B2H  NOT USED
+IT0. . . . . . . . . . . . . . . . .  B  ADDR  0088H  NOT USED
+IT1. . . . . . . . . . . . . . . . .  B  ADDR  008AH  NOT USED
+JEFF . . . . . . . . . . . . . . . .  C  ADDR  0E40H
+K1 . . . . . . . . . . . . . . . . .  C  ADDR  0757H
+K2 . . . . . . . . . . . . . . . . .  C  ADDR  0761H
+K3 . . . . . . . . . . . . . . . . .  C  ADDR  07C6H  NOT USED
+KBE. . . . . . . . . . . . . . . . .  D  ADDR  009DH  NOT USED
+KBF. . . . . . . . . . . . . . . . .  D  ADDR  009EH  NOT USED
+KBLS . . . . . . . . . . . . . . . .  D  ADDR  009CH  NOT USED
+KCODE0 . . . . . . . . . . . . . . .  C  ADDR  0F0BH
+KCODE1 . . . . . . . . . . . . . . .  C  ADDR  0F0FH
+KCODE2 . . . . . . . . . . . . . . .  C  ADDR  0F13H
+KCODE3 . . . . . . . . . . . . . . .  C  ADDR  0F17H
+KEYPAD . . . . . . . . . . . . . . .  N  NUMB  0090H
+KFIND. . . . . . . . . . . . . . . .  C  ADDR  07B8H
+KFIND2 . . . . . . . . . . . . . . .  C  ADDR  0814H
+LCD_CLEAR. . . . . . . . . . . . . .  N  NUMB  0001H  NOT USED
+LCD_DDRAM. . . . . . . . . . . . . .  N  NUMB  0081H  NOT USED
+LCD_ENTRY_SET. . . . . . . . . . . .  N  NUMB  0006H  NOT USED
+LCD_FN_SET . . . . . . . . . . . . .  N  NUMB  003CH  NOT USED
+LCD_HOME . . . . . . . . . . . . . .  N  NUMB  0002H  NOT USED
+LCD_INIT . . . . . . . . . . . . . .  C  ADDR  08A7H
+LCD_ONOFF_CNTL . . . . . . . . . . .  N  NUMB  000FH  NOT USED
+LETTER . . . . . . . . . . . . . . .  C  ADDR  0B04H
+LETTER13 . . . . . . . . . . . . . .  C  ADDR  0B52H
+LETTER14 . . . . . . . . . . . . . .  C  ADDR  0B6CH
+LETTER2. . . . . . . . . . . . . . .  C  ADDR  0B1EH
+LETTER3. . . . . . . . . . . . . . .  C  ADDR  023EH
+LETTER4. . . . . . . . . . . . . . .  C  ADDR  0258H
+LETTER5. . . . . . . . . . . . . . .  C  ADDR  059EH
+LETTER6. . . . . . . . . . . . . . .  C  ADDR  05B8H
+LOCKED . . . . . . . . . . . . . . .  C  ADDR  070CH
+LOCKEDMSG. . . . . . . . . . . . . .  C  ADDR  0DFEH
+LOCKOUT. . . . . . . . . . . . . . .  C  ADDR  0700H
+LOGIN. . . . . . . . . . . . . . . .  C  ADDR  05F2H
+LOGINART1. . . . . . . . . . . . . .  C  ADDR  0C34H
+LOGINART2. . . . . . . . . . . . . .  C  ADDR  0C5EH
+LOGINMSG . . . . . . . . . . . . . .  C  ADDR  0C0AH
+LOGOUT . . . . . . . . . . . . . . .  C  ADDR  0E8DH
+LOOP . . . . . . . . . . . . . . . .  C  ADDR  0223H
+MATCH. . . . . . . . . . . . . . . .  C  ADDR  07BEH
+MATCH2 . . . . . . . . . . . . . . .  C  ADDR  081AH
+MEMEND . . . . . . . . . . . . . . .  C  ADDR  0D68H  NOT USED
+MENU1. . . . . . . . . . . . . . . .  C  ADDR  0E63H
+MENU2. . . . . . . . . . . . . . . .  C  ADDR  0E78H
+MICHAEL. . . . . . . . . . . . . . .  C  ADDR  0E1AH
+MONITOR. . . . . . . . . . . . . . .  C  ADDR  001BH
+MONITORLJMP. . . . . . . . . . . . .  C  ADDR  00BFH
+MONITORMENU. . . . . . . . . . . . .  C  ADDR  0018H
+MOVE . . . . . . . . . . . . . . . .  C  ADDR  0172H
+MYCLASS. . . . . . . . . . . . . . .  C  ADDR  0E58H
+MYNAME . . . . . . . . . . . . . . .  C  ADDR  0E46H
+MYPASSCODE . . . . . . . . . . . . .  C  ADDR  0DA4H
+NEXT . . . . . . . . . . . . . . . .  C  ADDR  0246H
+NEXT1. . . . . . . . . . . . . . . .  C  ADDR  0B5AH
+NEXT2. . . . . . . . . . . . . . . .  C  ADDR  05A6H
+NEXTPAGE . . . . . . . . . . . . . .  C  ADDR  02C1H
+NFOUND . . . . . . . . . . . . . . .  C  ADDR  0D59H
+OSCCON . . . . . . . . . . . . . . .  D  ADDR  0086H  NOT USED
+OSNAME . . . . . . . . . . . . . . .  C  ADDR  0C49H
+OV . . . . . . . . . . . . . . . . .  B  ADDR  00D2H  NOT USED
+OV1. . . . . . . . . . . . . . . . .  C  ADDR  0410H
+OVER . . . . . . . . . . . . . . . .  C  ADDR  076DH
+OVER1. . . . . . . . . . . . . . . .  C  ADDR  0779H
+OVER3. . . . . . . . . . . . . . . .  C  ADDR  07D5H
+P. . . . . . . . . . . . . . . . . .  B  ADDR  00D0H  NOT USED
+P0 . . . . . . . . . . . . . . . . .  D  ADDR  0080H  NOT USED
+P1 . . . . . . . . . . . . . . . . .  D  ADDR  0090H  NOT USED
+P1M1 . . . . . . . . . . . . . . . .  D  ADDR  00D4H  NOT USED
+P1M2 . . . . . . . . . . . . . . . .  D  ADDR  00E2H  NOT USED
+P2 . . . . . . . . . . . . . . . . .  D  ADDR  00A0H  NOT USED
+P3 . . . . . . . . . . . . . . . . .  D  ADDR  00B0H
+P3M1 . . . . . . . . . . . . . . . .  D  ADDR  00D5H  NOT USED
+P3M2 . . . . . . . . . . . . . . . .  D  ADDR  00E3H  NOT USED
+P4 . . . . . . . . . . . . . . . . .  D  ADDR  00C0H  NOT USED
+P4M1 . . . . . . . . . . . . . . . .  D  ADDR  00D6H  NOT USED
+P4M2 . . . . . . . . . . . . . . . .  D  ADDR  00E4H  NOT USED
+P5 . . . . . . . . . . . . . . . . .  D  ADDR  00E8H  NOT USED
+PC . . . . . . . . . . . . . . . . .  B  ADDR  00BEH  NOT USED
+PCON . . . . . . . . . . . . . . . .  D  ADDR  0087H  NOT USED
+PEXIT. . . . . . . . . . . . . . . .  C  ADDR  0B36H
+POLLKEYPAD . . . . . . . . . . . . .  C  ADDR  07C3H
+PPCL . . . . . . . . . . . . . . . .  B  ADDR  00BEH  NOT USED
+PREVPAGE . . . . . . . . . . . . . .  C  ADDR  02CAH
+PRINTADDR. . . . . . . . . . . . . .  C  ADDR  0584H
+PRINTBYTE. . . . . . . . . . . . . .  C  ADDR  0B37H
+PRINTCHAR. . . . . . . . . . . . . .  C  ADDR  0B7BH
+PRINTNAME. . . . . . . . . . . . . .  C  ADDR  0741H
+PRINTSTRING. . . . . . . . . . . . .  C  ADDR  0B2CH
+PRINTTEMP. . . . . . . . . . . . . .  C  ADDR  05C5H
+PROMPTDUMP . . . . . . . . . . . . .  C  ADDR  01A0H
+PROMPTEDIT . . . . . . . . . . . . .  C  ADDR  0324H
+PROMPTFIND . . . . . . . . . . . . .  C  ADDR  0414H
+PROMPTKEYPAD . . . . . . . . . . . .  C  ADDR  0754H
+PROMPTMOVE . . . . . . . . . . . . .  C  ADDR  00C4H
+PS . . . . . . . . . . . . . . . . .  B  ADDR  00BCH  NOT USED
+PSL. . . . . . . . . . . . . . . . .  B  ADDR  00BCH  NOT USED
+PSW. . . . . . . . . . . . . . . . .  D  ADDR  00D0H  NOT USED
+PT0. . . . . . . . . . . . . . . . .  B  ADDR  00B9H  NOT USED
+PT0L . . . . . . . . . . . . . . . .  B  ADDR  00B9H  NOT USED
+PT1. . . . . . . . . . . . . . . . .  B  ADDR  00BBH  NOT USED
+PT1L . . . . . . . . . . . . . . . .  B  ADDR  00BBH  NOT USED
+PT2. . . . . . . . . . . . . . . . .  B  ADDR  00BDH  NOT USED
+PT2L . . . . . . . . . . . . . . . .  B  ADDR  00BDH  NOT USED
+PUTDUMPADDR. . . . . . . . . . . . .  C  ADDR  0305H  NOT USED
+PUT_ADDR . . . . . . . . . . . . . .  C  ADDR  0AC4H
+PUT_FLEX . . . . . . . . . . . . . .  C  ADDR  0ADBH  NOT USED
+PUT_LINE1. . . . . . . . . . . . . .  C  ADDR  0A03H
+PUT_LINE2. . . . . . . . . . . . . .  C  ADDR  0A1AH
+PUT_LINE2_CB . . . . . . . . . . . .  C  ADDR  0A31H
+PUT_LINE3. . . . . . . . . . . . . .  C  ADDR  0A50H
+PUT_LINE3_CB . . . . . . . . . . . .  C  ADDR  0A67H
+PUT_LINE4. . . . . . . . . . . . . .  C  ADDR  0A86H
+PUT_LINE4_CB . . . . . . . . . . . .  C  ADDR  0AA5H
+PUT_RTC. . . . . . . . . . . . . . .  C  ADDR  09ECH
+PUT_TEMP . . . . . . . . . . . . . .  C  ADDR  09D5H
+PWLIST . . . . . . . . . . . . . . .  C  ADDR  0F00H
+PWSUCCESS. . . . . . . . . . . . . .  C  ADDR  0DF1H
+PX0. . . . . . . . . . . . . . . . .  B  ADDR  00B8H  NOT USED
+PX0L . . . . . . . . . . . . . . . .  B  ADDR  00B8H  NOT USED
+PX1. . . . . . . . . . . . . . . . .  B  ADDR  00BAH  NOT USED
+PX1L . . . . . . . . . . . . . . . .  B  ADDR  00BAH  NOT USED
+RB8. . . . . . . . . . . . . . . . .  B  ADDR  009AH  NOT USED
+RCAP2H . . . . . . . . . . . . . . .  D  ADDR  00CBH  NOT USED
+RCAP2L . . . . . . . . . . . . . . .  D  ADDR  00CAH  NOT USED
+RCLK . . . . . . . . . . . . . . . .  B  ADDR  00CDH  NOT USED
+RD . . . . . . . . . . . . . . . . .  B  ADDR  00B7H  NOT USED
+READREG. . . . . . . . . . . . . . .  C  ADDR  096FH
+REDO . . . . . . . . . . . . . . . .  C  ADDR  00FBH
+RELOGIN. . . . . . . . . . . . . . .  C  ADDR  000FH
+REN. . . . . . . . . . . . . . . . .  B  ADDR  009CH  NOT USED
+REPLACE. . . . . . . . . . . . . . .  C  ADDR  0CFCH
+REPRINT. . . . . . . . . . . . . . .  C  ADDR  05FAH  NOT USED
+RESET. . . . . . . . . . . . . . . .  C  ADDR  0000H  NOT USED
+RETRY. . . . . . . . . . . . . . . .  C  ADDR  0647H
+RI . . . . . . . . . . . . . . . . .  B  ADDR  0098H  NOT USED
+RILEY. . . . . . . . . . . . . . . .  C  ADDR  0E2BH
+ROTATE . . . . . . . . . . . . . . .  C  ADDR  0B09H
+ROTATELEFT . . . . . . . . . . . . .  C  ADDR  074FH
+ROW_0. . . . . . . . . . . . . . . .  C  ADDR  07A4H
+ROW_1. . . . . . . . . . . . . . . .  C  ADDR  07A9H
+ROW_2. . . . . . . . . . . . . . . .  C  ADDR  07AEH
+ROW_3. . . . . . . . . . . . . . . .  C  ADDR  07B3H
+RS . . . . . . . . . . . . . . . . .  N  NUMB  00B2H
+RS0. . . . . . . . . . . . . . . . .  B  ADDR  00D3H  NOT USED
+RS1. . . . . . . . . . . . . . . . .  B  ADDR  00D4H  NOT USED
+RTC_INIT . . . . . . . . . . . . . .  C  ADDR  08D4H
+RUNTIMEMENU. . . . . . . . . . . . .  C  ADDR  0EA2H  NOT USED
+RW . . . . . . . . . . . . . . . . .  N  NUMB  00B1H
+RXD. . . . . . . . . . . . . . . . .  B  ADDR  00B0H  NOT USED
+SADDR. . . . . . . . . . . . . . . .  D  ADDR  00A9H  NOT USED
+SADDR_0. . . . . . . . . . . . . . .  D  ADDR  00A9H  NOT USED
+SADDR_1. . . . . . . . . . . . . . .  D  ADDR  00AAH  NOT USED
+SADEN. . . . . . . . . . . . . . . .  D  ADDR  00B9H  NOT USED
+SADEN_0. . . . . . . . . . . . . . .  D  ADDR  00B9H  NOT USED
+SADEN_1. . . . . . . . . . . . . . .  D  ADDR  00BAH  NOT USED
+SBUF . . . . . . . . . . . . . . . .  D  ADDR  0099H  NOT USED
+SCON . . . . . . . . . . . . . . . .  D  ADDR  0098H  NOT USED
+SCRAMBLEKEY. . . . . . . . . . . . .  C  ADDR  070FH  NOT USED
+SECONDBYTE . . . . . . . . . . . . .  C  ADDR  06BEH
+SETHOLD. . . . . . . . . . . . . . .  C  ADDR  0BA4H  NOT USED
+SEVENSEG . . . . . . . . . . . . . .  C  ADDR  0748H
+SEVENSEGMSG. . . . . . . . . . . . .  C  ADDR  0EF1H
+SHARIF . . . . . . . . . . . . . . .  C  ADDR  0E32H
+SINT . . . . . . . . . . . . . . . .  C  ADDR  0023H  NOT USED
+SM0. . . . . . . . . . . . . . . . .  B  ADDR  009FH  NOT USED
+SM1. . . . . . . . . . . . . . . . .  B  ADDR  009EH  NOT USED
+SM2. . . . . . . . . . . . . . . . .  B  ADDR  009DH  NOT USED
+SP . . . . . . . . . . . . . . . . .  D  ADDR  0081H  NOT USED
+SPCON. . . . . . . . . . . . . . . .  D  ADDR  00C3H  NOT USED
+SPCR . . . . . . . . . . . . . . . .  D  ADDR  00D5H  NOT USED
+SPDAT. . . . . . . . . . . . . . . .  D  ADDR  00C5H  NOT USED
+SPDR . . . . . . . . . . . . . . . .  D  ADDR  0086H  NOT USED
+SPSR . . . . . . . . . . . . . . . .  D  ADDR  00AAH  NOT USED
+SPSTA. . . . . . . . . . . . . . . .  D  ADDR  00C4H  NOT USED
+START. . . . . . . . . . . . . . . .  C  ADDR  0002H
+SUCCESS. . . . . . . . . . . . . . .  C  ADDR  06F3H
+T0 . . . . . . . . . . . . . . . . .  B  ADDR  00B4H  NOT USED
+T1 . . . . . . . . . . . . . . . . .  B  ADDR  00B5H  NOT USED
+T2CON. . . . . . . . . . . . . . . .  D  ADDR  00C8H  NOT USED
+T2MOD. . . . . . . . . . . . . . . .  D  ADDR  00C9H  NOT USED
+TB8. . . . . . . . . . . . . . . . .  B  ADDR  009BH  NOT USED
+TCLK . . . . . . . . . . . . . . . .  B  ADDR  00CCH  NOT USED
+TCON . . . . . . . . . . . . . . . .  D  ADDR  0088H  NOT USED
+TEMPMENU . . . . . . . . . . . . . .  C  ADDR  0EADH  NOT USED
+TEST1. . . . . . . . . . . . . . . .  C  ADDR  0EB5H
+TEST2. . . . . . . . . . . . . . . .  C  ADDR  0EC4H
+TEST3. . . . . . . . . . . . . . . .  C  ADDR  0ED3H
+TEST4. . . . . . . . . . . . . . . .  C  ADDR  0EE2H
+TF0. . . . . . . . . . . . . . . . .  B  ADDR  008DH  NOT USED
+TF1. . . . . . . . . . . . . . . . .  B  ADDR  008FH  NOT USED
+TF2. . . . . . . . . . . . . . . . .  B  ADDR  00CFH  NOT USED
+TH0. . . . . . . . . . . . . . . . .  D  ADDR  008CH  NOT USED
+TH1. . . . . . . . . . . . . . . . .  D  ADDR  008DH  NOT USED
+TH2. . . . . . . . . . . . . . . . .  D  ADDR  00CDH  NOT USED
+TI . . . . . . . . . . . . . . . . .  B  ADDR  0099H  NOT USED
+TIMER0 . . . . . . . . . . . . . . .  C  ADDR  000BH  NOT USED
+TIMER1 . . . . . . . . . . . . . . .  C  ADDR  001BH  NOT USED
+TIMER2 . . . . . . . . . . . . . . .  C  ADDR  002BH  NOT USED
+TL0. . . . . . . . . . . . . . . . .  D  ADDR  008AH  NOT USED
+TL1. . . . . . . . . . . . . . . . .  D  ADDR  008BH  NOT USED
+TL2. . . . . . . . . . . . . . . . .  D  ADDR  00CCH  NOT USED
+TMOD . . . . . . . . . . . . . . . .  D  ADDR  0089H  NOT USED
+TR0. . . . . . . . . . . . . . . . .  B  ADDR  008CH  NOT USED
+TR1. . . . . . . . . . . . . . . . .  B  ADDR  008EH  NOT USED
+TR2. . . . . . . . . . . . . . . . .  B  ADDR  00CAH  NOT USED
+TRYAGAIN . . . . . . . . . . . . . .  C  ADDR  0DE0H
+TXD. . . . . . . . . . . . . . . . .  B  ADDR  00B1H  NOT USED
+USER1. . . . . . . . . . . . . . . .  C  ADDR  0D1FH
+USER2. . . . . . . . . . . . . . . .  C  ADDR  0D2DH
+VERIFYINPUT. . . . . . . . . . . . .  C  ADDR  0DB8H
+WAITBUSY . . . . . . . . . . . . . .  C  ADDR  0952H
+WAKEUP . . . . . . . . . . . . . . .  C  ADDR  081FH
+WDTCON . . . . . . . . . . . . . . .  D  ADDR  00A7H  NOT USED
+WDTPRG . . . . . . . . . . . . . . .  D  ADDR  00A7H  NOT USED
+WDTRST . . . . . . . . . . . . . . .  D  ADDR  00A6H  NOT USED
+WR . . . . . . . . . . . . . . . . .  B  ADDR  00B6H  NOT USED
+WRITEREG . . . . . . . . . . . . . .  C  ADDR  0995H  NOT USED
+XROW_0 . . . . . . . . . . . . . . .  C  ADDR  0800H
+XROW_1 . . . . . . . . . . . . . . .  C  ADDR  0805H
+XROW_2 . . . . . . . . . . . . . . .  C  ADDR  080AH
+XROW_3 . . . . . . . . . . . . . . .  C  ADDR  080FH
+ZERO . . . . . . . . . . . . . . . .  C  ADDR  044BH

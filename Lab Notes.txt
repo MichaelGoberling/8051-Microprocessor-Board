@@ -1,0 +1,9 @@
+Microprocessor Design Lab Notes: 
+
+3/28: 	Switched from OrCAD to EAGLE in order to be able to work from home, etc.
+	Colin Peterson provided crash course into EAGLE as well as documentation
+	for learning more. 
+	
+	Created modules for the all memory, the power system, the address latch,
+	reset circuitry, and the oscillator circuitry.
+

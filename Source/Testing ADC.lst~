@@ -1,0 +1,446 @@
+Testing ADC                                                                                                             PAGE 1
+                         1             org     0
+0000 020003              2             jmp     start
+                         3
+  00B2                   4     RS      bit     P3.2
+  00B1                   5     RW      bit     P3.1
+                         6
+  0081                   7     LINE1   set     10000001b       ; DDRAM location on LCD for Line 1
+  00C1                   8     LINE2   set     11000001b       ; DDRAM location on LCD for Line 2
+  0001                   9     Clear_LCD       set     00000001b       ; Clears LCD
+                        10
+  00B0                  11     IO_M    BIT     P3.0
+                        12
+                        13     cmd     macro   cmd_code
+                        14             PUSH    ACC
+                        15             PUSH    0
+                        16             SETB    IO_m
+                        17             MOV     R0,#80h
+                        18             MOV     A, cmd_code
+                        19             MOVX    @R0, A
+                        20             MOV     A, #02d
+                        21             ACALL   DELAY_MS
+                        22             POP     0
+                        23             POP     ACC
+                        24     endm
+                        25
+                        26     start:
+                        27
+                        28     main:
+0003 116F               29             ACALL   INITIALIZE              ;Initialize LCD and PORTS
+                        30     FOREVER:
+                        31
+0005 7810               32             MOV     R0, #10h                ;ADC
+0007 E2                 33             MOVX    A, @R0          ;Take in ADC value
+0008 75F005             34             MOV     B,#5
+                        35
+                        36
+000B EE                 37             MOV     A,R6
+000C 3103               38             ACALL   PRINT_CHAR
+000E EF                 39             MOV     A,R7
+000F 3103               40             ACALL   PRINT_CHAR
+                        41
+0011 74FA               42             MOV     A, #250d
+0013 312B               43             ACALL   DELAY_MS
+0015 74FA               44             MOV     A, #250d
+0017 312B               45             ACALL   DELAY_MS
+0019 74FA               46             MOV     A, #250d
+001B 312B               47             ACALL   DELAY_MS
+001D 74FA               48             MOV     A, #250d
+001F 312B               49             ACALL   DELAY_MS
+                        50
+0021 C2B2               51             CLR     RS
+                        52 +1          cmd     #Clear_LCD
+0023 C0E0               53 +1                  PUSH    acc
+0025 C000               54 +1                  PUSH    0
+0027 D2B0               55 +1                  SETB    io_m
+0029 7880               56 +1                  MOV     r0 , #80h
+002B 7401               57 +1                  MOV     a , #Clear_LCD
+002D F2                 58 +1                  MOVX    @r0 , a
+002E 7402               59 +1                  MOV     a , #02d
+0030 312B               60 +1                  ACALL   delay_ms
+0032 D000               61 +1                  POP     0
+0034 D0E0               62 +1                  POP     acc
+                        63 +1          cmd     #LINE1
+0036 C0E0               64 +1                  PUSH    acc
+0038 C000               65 +1                  PUSH    0
+003A D2B0               66 +1                  SETB    io_m
+003C 7880               67 +1                  MOV     r0 , #80h
+003E 7481               68 +1                  MOV     a , #LINE1
+0040 F2                 69 +1                  MOVX    @r0 , a
+0041 7402               70 +1                  MOV     a , #02d
+0043 312B               71 +1                  ACALL   delay_ms
+0045 D000               72 +1                  POP     0
+0047 D0E0               73 +1                  POP     acc
+0049 0105               74             AJMP    FOREVER
+                        75
+                        76     ;*************************************************
+                        77     BCD_to_ASCII:
+004B FE                 78             MOV     R6,A    ;Keep copy in R1 for now
+004C 540F               79             ANL     A,#0FH  ;Mask upper nibble
+004E 4430               80             ORL     A,#30H  ;Add 30H
+0050 C0E0               81             PUSH    ACC
+0052 C3                 82             CLR     C
+0053 943A               83             SUBB    A,#3AH  ;See if a 0-9 Digit
+0055 D0E0               84             POP     ACC
+0057 4002               85             JC      SECOND_NIBBLE
+0059 2407               86             ADD     A,#07H  ;Add 7 to make hex value
+                        87
+                        88     SECOND_NIBBLE:
+005B FF                 89             MOV     R7,A    ;Store lower nibble in A
+005C EE                 90             MOV     A,R6
+005D C4                 91             SWAP    A       ;Now convert upper nibble
+005E 540F               92             ANL     A,#0FH  ;Mask lower nibble
+0060 4430               93             ORL     A,#30H  ;Add 30H
+0062 C3                 94             CLR     C
+0063 C0E0               95             PUSH    ACC
+0065 943A               96             SUBB    A,#3AH  ;See if a 0-9 Digit
+0067 D0E0               97             POP     ACC
+0069 4002               98             JC      END_CONVERT
+006B 2407               99             ADD     A,#07H  ;Add 7 to make hex value
+                       100
+                       101     END_CONVERT:
+006D FE                102             MOV     R6,A
+006E 22                103             RET
+                       104
+                       105     ;*************************************************
+                       106     Initialize:
+006F C2B1              107             clr     RW
+0071 C2B2              108             clr     RS
+0073 7432              109             MOV     A,#50d          ;40ms delay
+0075 312B              110             ACALL   DELAY_MS
+                       111 +1          cmd     #00111000b      ; Function set
+0077 C0E0              112 +1                  PUSH    acc
+0079 C000              113 +1                  PUSH    0
+007B D2B0              114 +1                  SETB    io_m
+007D 7880              115 +1                  MOV     r0 , #80h
+007F 7438              116 +1                  MOV     a , #00111000b
+0081 F2                117 +1                  MOVX    @r0 , a
+0082 7402              118 +1                  MOV     a , #02d
+0084 312B              119 +1                  ACALL   delay_ms
+0086 D000              120 +1                  POP     0
+0088 D0E0              121 +1                  POP     acc
+008A 3119              122             ACALL   DELAY_1MS
+                       123 +1          cmd     #00111000b      ; Function set
+008C C0E0              124 +1                  PUSH    acc
+008E C000              125 +1                  PUSH    0
+0090 D2B0              126 +1                  SETB    io_m
+0092 7880              127 +1                  MOV     r0 , #80h
+0094 7438              128 +1                  MOV     a , #00111000b
+0096 F2                129 +1                  MOVX    @r0 , a
+0097 7402              130 +1                  MOV     a , #02d
+0099 312B              131 +1                  ACALL   delay_ms
+009B D000              132 +1                  POP     0
+009D D0E0              133 +1                  POP     acc
+009F 3119              134             ACALL   DELAY_1MS
+                       135 +1          cmd     #00001111b      ; Display ON/OFF control
+00A1 C0E0              136 +1                  PUSH    acc
+00A3 C000              137 +1                  PUSH    0
+00A5 D2B0              138 +1                  SETB    io_m
+00A7 7880              139 +1                  MOV     r0 , #80h
+00A9 740F              140 +1                  MOV     a , #00001111b
+00AB F2                141 +1                  MOVX    @r0 , a
+00AC 7402              142 +1                  MOV     a , #02d
+00AE 312B              143 +1                  ACALL   delay_ms
+00B0 D000              144 +1                  POP     0
+00B2 D0E0              145 +1                  POP     acc
+00B4 3119              146             ACALL   DELAY_1MS
+                       147 +1          cmd     #00000001b      ; Clear display
+00B6 C0E0              148 +1                  PUSH    acc
+00B8 C000              149 +1                  PUSH    0
+00BA D2B0              150 +1                  SETB    io_m
+00BC 7880              151 +1                  MOV     r0 , #80h
+00BE 7401              152 +1                  MOV     a , #00000001b
+00C0 F2                153 +1                  MOVX    @r0 , a
+00C1 7402              154 +1                  MOV     a , #02d
+00C3 312B              155 +1                  ACALL   delay_ms
+00C5 D000              156 +1                  POP     0
+00C7 D0E0              157 +1                  POP     acc
+00C9 7403              158             MOV     A,#03d          ;3ms delay
+00CB 312B              159             ACALL   DELAY_MS
+                       160 +1          cmd     #00000110b      ; Entry mode set
+00CD C0E0              161 +1                  PUSH    acc
+00CF C000              162 +1                  PUSH    0
+00D1 D2B0              163 +1                  SETB    io_m
+00D3 7880              164 +1                  MOV     r0 , #80h
+00D5 7406              165 +1                  MOV     a , #00000110b
+00D7 F2                166 +1                  MOVX    @r0 , a
+00D8 7402              167 +1                  MOV     a , #02d
+00DA 312B              168 +1                  ACALL   delay_ms
+00DC D000              169 +1                  POP     0
+00DE D0E0              170 +1                  POP     acc
+00E0 22                171             RET
+                       172
+                       173     ;*************************************************
+                       174     ; Print the string ...
+                       175     PRINT_LCD:
+00E1 D2B2              176             setb    RS
+00E3 7A00              177             mov     R2, #0
+00E5 EA                178     print:  mov     A, R2
+00E6 0A                179             inc     R2
+00E7 93                180             movc    A, @A+DPTR
+00E8 B40002            181             cjne    A, #0, CONT_PRINT
+00EB 8015              182             SJMP    END_PRINT
+                       183     CONT_PRINT:
+                       184 +1          cmd     A
+00ED C0E0              185 +1                  PUSH    acc
+00EF C000              186 +1                  PUSH    0
+00F1 D2B0              187 +1                  SETB    io_m
+00F3 7880              188 +1                  MOV     r0 , #80h
+00F5 F5E0              189 +1                  MOV     a , A
+00F7 F2                190 +1                  MOVX    @r0 , a
+00F8 7402              191 +1                  MOV     a , #02d
+00FA 312B              192 +1                  ACALL   delay_ms
+00FC D000              193 +1                  POP     0
+00FE D0E0              194 +1                  POP     acc
+0100 80E3              195             SJMP    print
+                       196     END_PRINT:
+0102 22                197             RET
+                       198
+                       199     ;*********************************************************
+                       200     PRINT_CHAR:
+0103 D2B2              201             setb    RS
+                       202 +1          cmd     A
+0105 C0E0              203 +1                  PUSH    acc
+0107 C000              204 +1                  PUSH    0
+0109 D2B0              205 +1                  SETB    io_m
+010B 7880              206 +1                  MOV     r0 , #80h
+010D F5E0              207 +1                  MOV     a , A
+010F F2                208 +1                  MOVX    @r0 , a
+0110 7402              209 +1                  MOV     a , #02d
+0112 312B              210 +1                  ACALL   delay_ms
+0114 D000              211 +1                  POP     0
+0116 D0E0              212 +1                  POP     acc
+0118 22                213             RET
+                       214
+                       215     ;********************************************
+                       216     DELAY_1ms:
+0119 C000              217             PUSH    0
+011B C001              218             PUSH    1
+                       219
+011D 7902              220             MOV     R1, #2h
+                       221     DELAY_1:
+011F 78A4              222             MOV     R0, #0A4h
+                       223     DELAY_2:
+0121 00                224             NOP
+0122 D8FD              225             DJNZ    R0, DELAY_2
+0124 D9F9              226             DJNZ    R1, DELAY_1
+                       227
+0126 D001              228             POP     1
+0128 D000              229             POP     0
+012A 22                230             RET
+                       231
+                       232     ;***********************************************
+                       233     ;The time in ms should be placed into A
+                       234     DELAY_ms:
+012B 3119              235             ACALL   DELAY_1MS
+012D D5E0FB            236             DJNZ    ACC, DELAY_ms
+0130 22                237             RET
+                       238
+                       239             end
+ASSEMBLY COMPLETE, NO ERRORS FOUND, NO WARNINGS
+
+
+SYMBOL TABLE:
+??MCU_8051_IDE . . . . . . . . . . .  N  NUMB  8051H  NOT USED
+??VERSION. . . . . . . . . . . . . .  N  NUMB  0149H  NOT USED
+AC . . . . . . . . . . . . . . . . .  B  ADDR  00D6H  NOT USED
+ACC. . . . . . . . . . . . . . . . .  D  ADDR  00E0H
+ACSR . . . . . . . . . . . . . . . .  D  ADDR  0097H  NOT USED
+ADCF . . . . . . . . . . . . . . . .  D  ADDR  00F6H  NOT USED
+ADCLK. . . . . . . . . . . . . . . .  D  ADDR  00F2H  NOT USED
+ADCON. . . . . . . . . . . . . . . .  D  ADDR  00F3H  NOT USED
+ADDH . . . . . . . . . . . . . . . .  D  ADDR  00F5H  NOT USED
+ADDL . . . . . . . . . . . . . . . .  D  ADDR  00F4H  NOT USED
+AUXR . . . . . . . . . . . . . . . .  D  ADDR  008EH  NOT USED
+AUXR1. . . . . . . . . . . . . . . .  D  ADDR  00A2H  NOT USED
+B. . . . . . . . . . . . . . . . . .  D  ADDR  00F0H
+BCD_TO_ASCII . . . . . . . . . . . .  C  ADDR  004BH  NOT USED
+BDRCON . . . . . . . . . . . . . . .  D  ADDR  009BH  NOT USED
+BDRCON_1 . . . . . . . . . . . . . .  D  ADDR  009CH  NOT USED
+BRL. . . . . . . . . . . . . . . . .  D  ADDR  009AH  NOT USED
+CCAP0H . . . . . . . . . . . . . . .  D  ADDR  00FAH  NOT USED
+CCAP0L . . . . . . . . . . . . . . .  D  ADDR  00EAH  NOT USED
+CCAP1H . . . . . . . . . . . . . . .  D  ADDR  00FBH  NOT USED
+CCAP1L . . . . . . . . . . . . . . .  D  ADDR  00EBH  NOT USED
+CCAP2H . . . . . . . . . . . . . . .  D  ADDR  00FCH  NOT USED
+CCAP3H . . . . . . . . . . . . . . .  D  ADDR  00FDH  NOT USED
+CCAP4H . . . . . . . . . . . . . . .  D  ADDR  00FEH  NOT USED
+CCAPL2H. . . . . . . . . . . . . . .  D  ADDR  00FCH  NOT USED
+CCAPL2L. . . . . . . . . . . . . . .  D  ADDR  00ECH  NOT USED
+CCAPL3H. . . . . . . . . . . . . . .  D  ADDR  00FDH  NOT USED
+CCAPL3L. . . . . . . . . . . . . . .  D  ADDR  00EDH  NOT USED
+CCAPL4H. . . . . . . . . . . . . . .  D  ADDR  00FEH  NOT USED
+CCAPL4L. . . . . . . . . . . . . . .  D  ADDR  00EEH  NOT USED
+CCAPM0 . . . . . . . . . . . . . . .  D  ADDR  00DAH  NOT USED
+CCAPM1 . . . . . . . . . . . . . . .  D  ADDR  00DBH  NOT USED
+CCAPM2 . . . . . . . . . . . . . . .  D  ADDR  00DCH  NOT USED
+CCAPM3 . . . . . . . . . . . . . . .  D  ADDR  00DDH  NOT USED
+CCAPM4 . . . . . . . . . . . . . . .  D  ADDR  00DEH  NOT USED
+CCF0 . . . . . . . . . . . . . . . .  B  ADDR  00D8H  NOT USED
+CCF1 . . . . . . . . . . . . . . . .  B  ADDR  00D9H  NOT USED
+CCF2 . . . . . . . . . . . . . . . .  B  ADDR  00DAH  NOT USED
+CCF3 . . . . . . . . . . . . . . . .  B  ADDR  00DBH  NOT USED
+CCF4 . . . . . . . . . . . . . . . .  B  ADDR  00DCH  NOT USED
+CCON . . . . . . . . . . . . . . . .  D  ADDR  00D8H  NOT USED
+CFINT. . . . . . . . . . . . . . . .  C  ADDR  0033H  NOT USED
+CH . . . . . . . . . . . . . . . . .  D  ADDR  00F9H  NOT USED
+CKCON. . . . . . . . . . . . . . . .  D  ADDR  008FH  NOT USED
+CKCON0 . . . . . . . . . . . . . . .  D  ADDR  008FH  NOT USED
+CKRL . . . . . . . . . . . . . . . .  D  ADDR  0097H  NOT USED
+CKSEL. . . . . . . . . . . . . . . .  D  ADDR  0085H  NOT USED
+CL . . . . . . . . . . . . . . . . .  D  ADDR  00E9H  NOT USED
+CLEAR_LCD. . . . . . . . . . . . . .     NUMB  0001H            REDEFINABLE
+CLKREG . . . . . . . . . . . . . . .  D  ADDR  008FH  NOT USED
+CMOD . . . . . . . . . . . . . . . .  D  ADDR  00D9H  NOT USED
+CONT_PRINT . . . . . . . . . . . . .  C  ADDR  00EDH
+CPRL2. . . . . . . . . . . . . . . .  B  ADDR  00C8H  NOT USED
+CR . . . . . . . . . . . . . . . . .  B  ADDR  00DEH  NOT USED
+CT2. . . . . . . . . . . . . . . . .  B  ADDR  00C9H  NOT USED
+CY . . . . . . . . . . . . . . . . .  B  ADDR  00D7H  NOT USED
+DELAY_1. . . . . . . . . . . . . . .  C  ADDR  011FH
+DELAY_1MS. . . . . . . . . . . . . .  C  ADDR  0119H
+DELAY_2. . . . . . . . . . . . . . .  C  ADDR  0121H
+DELAY_MS . . . . . . . . . . . . . .  C  ADDR  012BH
+DP0H . . . . . . . . . . . . . . . .  D  ADDR  0083H  NOT USED
+DP0L . . . . . . . . . . . . . . . .  D  ADDR  0082H  NOT USED
+DP1H . . . . . . . . . . . . . . . .  D  ADDR  0085H  NOT USED
+DP1L . . . . . . . . . . . . . . . .  D  ADDR  0084H  NOT USED
+DPH. . . . . . . . . . . . . . . . .  D  ADDR  0083H  NOT USED
+DPL. . . . . . . . . . . . . . . . .  D  ADDR  0082H  NOT USED
+EA . . . . . . . . . . . . . . . . .  B  ADDR  00AFH  NOT USED
+EC . . . . . . . . . . . . . . . . .  B  ADDR  00AEH  NOT USED
+EECON. . . . . . . . . . . . . . . .  D  ADDR  0096H  NOT USED
+END_CONVERT. . . . . . . . . . . . .  C  ADDR  006DH
+END_PRINT. . . . . . . . . . . . . .  C  ADDR  0102H
+ES . . . . . . . . . . . . . . . . .  B  ADDR  00ACH  NOT USED
+ET0. . . . . . . . . . . . . . . . .  B  ADDR  00A9H  NOT USED
+ET1. . . . . . . . . . . . . . . . .  B  ADDR  00ABH  NOT USED
+ET2. . . . . . . . . . . . . . . . .  B  ADDR  00ADH  NOT USED
+EX0. . . . . . . . . . . . . . . . .  B  ADDR  00A8H  NOT USED
+EX1. . . . . . . . . . . . . . . . .  B  ADDR  00AAH  NOT USED
+EXEN2. . . . . . . . . . . . . . . .  B  ADDR  00CBH  NOT USED
+EXF2 . . . . . . . . . . . . . . . .  B  ADDR  00CEH  NOT USED
+EXTI0. . . . . . . . . . . . . . . .  C  ADDR  0003H  NOT USED
+EXTI1. . . . . . . . . . . . . . . .  C  ADDR  0013H  NOT USED
+F0 . . . . . . . . . . . . . . . . .  B  ADDR  00D5H  NOT USED
+FE . . . . . . . . . . . . . . . . .  B  ADDR  009FH  NOT USED
+FOREVER. . . . . . . . . . . . . . .  C  ADDR  0005H
+IE . . . . . . . . . . . . . . . . .  D  ADDR  00A8H  NOT USED
+IE0. . . . . . . . . . . . . . . . .  B  ADDR  0089H  NOT USED
+IE1. . . . . . . . . . . . . . . . .  B  ADDR  008BH  NOT USED
+INITIALIZE . . . . . . . . . . . . .  C  ADDR  006FH
+INT0 . . . . . . . . . . . . . . . .  B  ADDR  00B2H  NOT USED
+INT1 . . . . . . . . . . . . . . . .  B  ADDR  00B3H  NOT USED
+IO_M . . . . . . . . . . . . . . . .  B  ADDR  00B0H
+IP . . . . . . . . . . . . . . . . .  D  ADDR  00B8H  NOT USED
+IPH. . . . . . . . . . . . . . . . .  D  ADDR  00B7H  NOT USED
+IPH0 . . . . . . . . . . . . . . . .  D  ADDR  00B7H  NOT USED
+IPH1 . . . . . . . . . . . . . . . .  D  ADDR  00B3H  NOT USED
+IPL0 . . . . . . . . . . . . . . . .  D  ADDR  00B8H  NOT USED
+IPL1 . . . . . . . . . . . . . . . .  D  ADDR  00B2H  NOT USED
+IT0. . . . . . . . . . . . . . . . .  B  ADDR  0088H  NOT USED
+IT1. . . . . . . . . . . . . . . . .  B  ADDR  008AH  NOT USED
+KBE. . . . . . . . . . . . . . . . .  D  ADDR  009DH  NOT USED
+KBF. . . . . . . . . . . . . . . . .  D  ADDR  009EH  NOT USED
+KBLS . . . . . . . . . . . . . . . .  D  ADDR  009CH  NOT USED
+LINE1. . . . . . . . . . . . . . . .     NUMB  0081H            REDEFINABLE
+LINE2. . . . . . . . . . . . . . . .     NUMB  00C1H  NOT USED  REDEFINABLE
+MAIN . . . . . . . . . . . . . . . .  C  ADDR  0003H  NOT USED
+OSCCON . . . . . . . . . . . . . . .  D  ADDR  0086H  NOT USED
+OV . . . . . . . . . . . . . . . . .  B  ADDR  00D2H  NOT USED
+P. . . . . . . . . . . . . . . . . .  B  ADDR  00D0H  NOT USED
+P0 . . . . . . . . . . . . . . . . .  D  ADDR  0080H  NOT USED
+P1 . . . . . . . . . . . . . . . . .  D  ADDR  0090H  NOT USED
+P1M1 . . . . . . . . . . . . . . . .  D  ADDR  00D4H  NOT USED
+P1M2 . . . . . . . . . . . . . . . .  D  ADDR  00E2H  NOT USED
+P2 . . . . . . . . . . . . . . . . .  D  ADDR  00A0H  NOT USED
+P3 . . . . . . . . . . . . . . . . .  D  ADDR  00B0H  NOT USED
+P3M1 . . . . . . . . . . . . . . . .  D  ADDR  00D5H  NOT USED
+P3M2 . . . . . . . . . . . . . . . .  D  ADDR  00E3H  NOT USED
+P4 . . . . . . . . . . . . . . . . .  D  ADDR  00C0H  NOT USED
+P4M1 . . . . . . . . . . . . . . . .  D  ADDR  00D6H  NOT USED
+P4M2 . . . . . . . . . . . . . . . .  D  ADDR  00E4H  NOT USED
+P5 . . . . . . . . . . . . . . . . .  D  ADDR  00E8H  NOT USED
+PC . . . . . . . . . . . . . . . . .  B  ADDR  00BEH  NOT USED
+PCON . . . . . . . . . . . . . . . .  D  ADDR  0087H  NOT USED
+PPCL . . . . . . . . . . . . . . . .  B  ADDR  00BEH  NOT USED
+PRINT. . . . . . . . . . . . . . . .  C  ADDR  00E5H
+PRINT_CHAR . . . . . . . . . . . . .  C  ADDR  0103H
+PRINT_LCD. . . . . . . . . . . . . .  C  ADDR  00E1H  NOT USED
+PS . . . . . . . . . . . . . . . . .  B  ADDR  00BCH  NOT USED
+PSL. . . . . . . . . . . . . . . . .  B  ADDR  00BCH  NOT USED
+PSW. . . . . . . . . . . . . . . . .  D  ADDR  00D0H  NOT USED
+PT0. . . . . . . . . . . . . . . . .  B  ADDR  00B9H  NOT USED
+PT0L . . . . . . . . . . . . . . . .  B  ADDR  00B9H  NOT USED
+PT1. . . . . . . . . . . . . . . . .  B  ADDR  00BBH  NOT USED
+PT1L . . . . . . . . . . . . . . . .  B  ADDR  00BBH  NOT USED
+PT2. . . . . . . . . . . . . . . . .  B  ADDR  00BDH  NOT USED
+PT2L . . . . . . . . . . . . . . . .  B  ADDR  00BDH  NOT USED
+PX0. . . . . . . . . . . . . . . . .  B  ADDR  00B8H  NOT USED
+PX0L . . . . . . . . . . . . . . . .  B  ADDR  00B8H  NOT USED
+PX1. . . . . . . . . . . . . . . . .  B  ADDR  00BAH  NOT USED
+PX1L . . . . . . . . . . . . . . . .  B  ADDR  00BAH  NOT USED
+RB8. . . . . . . . . . . . . . . . .  B  ADDR  009AH  NOT USED
+RCAP2H . . . . . . . . . . . . . . .  D  ADDR  00CBH  NOT USED
+RCAP2L . . . . . . . . . . . . . . .  D  ADDR  00CAH  NOT USED
+RCLK . . . . . . . . . . . . . . . .  B  ADDR  00CDH  NOT USED
+RD . . . . . . . . . . . . . . . . .  B  ADDR  00B7H  NOT USED
+REN. . . . . . . . . . . . . . . . .  B  ADDR  009CH  NOT USED
+RESET. . . . . . . . . . . . . . . .  C  ADDR  0000H  NOT USED
+RI . . . . . . . . . . . . . . . . .  B  ADDR  0098H  NOT USED
+RS . . . . . . . . . . . . . . . . .  B  ADDR  00B2H
+RS0. . . . . . . . . . . . . . . . .  B  ADDR  00D3H  NOT USED
+RS1. . . . . . . . . . . . . . . . .  B  ADDR  00D4H  NOT USED
+RW . . . . . . . . . . . . . . . . .  B  ADDR  00B1H
+RXD. . . . . . . . . . . . . . . . .  B  ADDR  00B0H  NOT USED
+SADDR. . . . . . . . . . . . . . . .  D  ADDR  00A9H  NOT USED
+SADDR_0. . . . . . . . . . . . . . .  D  ADDR  00A9H  NOT USED
+SADDR_1. . . . . . . . . . . . . . .  D  ADDR  00AAH  NOT USED
+SADEN. . . . . . . . . . . . . . . .  D  ADDR  00B9H  NOT USED
+SADEN_0. . . . . . . . . . . . . . .  D  ADDR  00B9H  NOT USED
+SADEN_1. . . . . . . . . . . . . . .  D  ADDR  00BAH  NOT USED
+SBUF . . . . . . . . . . . . . . . .  D  ADDR  0099H  NOT USED
+SCON . . . . . . . . . . . . . . . .  D  ADDR  0098H  NOT USED
+SECOND_NIBBLE. . . . . . . . . . . .  C  ADDR  005BH
+SINT . . . . . . . . . . . . . . . .  C  ADDR  0023H  NOT USED
+SM0. . . . . . . . . . . . . . . . .  B  ADDR  009FH  NOT USED
+SM1. . . . . . . . . . . . . . . . .  B  ADDR  009EH  NOT USED
+SM2. . . . . . . . . . . . . . . . .  B  ADDR  009DH  NOT USED
+SP . . . . . . . . . . . . . . . . .  D  ADDR  0081H  NOT USED
+SPCON. . . . . . . . . . . . . . . .  D  ADDR  00C3H  NOT USED
+SPCR . . . . . . . . . . . . . . . .  D  ADDR  00D5H  NOT USED
+SPDAT. . . . . . . . . . . . . . . .  D  ADDR  00C5H  NOT USED
+SPDR . . . . . . . . . . . . . . . .  D  ADDR  0086H  NOT USED
+SPSR . . . . . . . . . . . . . . . .  D  ADDR  00AAH  NOT USED
+SPSTA. . . . . . . . . . . . . . . .  D  ADDR  00C4H  NOT USED
+START. . . . . . . . . . . . . . . .  C  ADDR  0003H
+T0 . . . . . . . . . . . . . . . . .  B  ADDR  00B4H  NOT USED
+T1 . . . . . . . . . . . . . . . . .  B  ADDR  00B5H  NOT USED
+T2CON. . . . . . . . . . . . . . . .  D  ADDR  00C8H  NOT USED
+T2MOD. . . . . . . . . . . . . . . .  D  ADDR  00C9H  NOT USED
+TB8. . . . . . . . . . . . . . . . .  B  ADDR  009BH  NOT USED
+TCLK . . . . . . . . . . . . . . . .  B  ADDR  00CCH  NOT USED
+TCON . . . . . . . . . . . . . . . .  D  ADDR  0088H  NOT USED
+TF0. . . . . . . . . . . . . . . . .  B  ADDR  008DH  NOT USED
+TF1. . . . . . . . . . . . . . . . .  B  ADDR  008FH  NOT USED
+TF2. . . . . . . . . . . . . . . . .  B  ADDR  00CFH  NOT USED
+TH0. . . . . . . . . . . . . . . . .  D  ADDR  008CH  NOT USED
+TH1. . . . . . . . . . . . . . . . .  D  ADDR  008DH  NOT USED
+TH2. . . . . . . . . . . . . . . . .  D  ADDR  00CDH  NOT USED
+TI . . . . . . . . . . . . . . . . .  B  ADDR  0099H  NOT USED
+TIMER0 . . . . . . . . . . . . . . .  C  ADDR  000BH  NOT USED
+TIMER1 . . . . . . . . . . . . . . .  C  ADDR  001BH  NOT USED
+TIMER2 . . . . . . . . . . . . . . .  C  ADDR  002BH  NOT USED
+TL0. . . . . . . . . . . . . . . . .  D  ADDR  008AH  NOT USED
+TL1. . . . . . . . . . . . . . . . .  D  ADDR  008BH  NOT USED
+TL2. . . . . . . . . . . . . . . . .  D  ADDR  00CCH  NOT USED
+TMOD . . . . . . . . . . . . . . . .  D  ADDR  0089H  NOT USED
+TR0. . . . . . . . . . . . . . . . .  B  ADDR  008CH  NOT USED
+TR1. . . . . . . . . . . . . . . . .  B  ADDR  008EH  NOT USED
+TR2. . . . . . . . . . . . . . . . .  B  ADDR  00CAH  NOT USED
+TXD. . . . . . . . . . . . . . . . .  B  ADDR  00B1H  NOT USED
+WDTCON . . . . . . . . . . . . . . .  D  ADDR  00A7H  NOT USED
+WDTPRG . . . . . . . . . . . . . . .  D  ADDR  00A7H  NOT USED
+WDTRST . . . . . . . . . . . . . . .  D  ADDR  00A6H  NOT USED
+WR . . . . . . . . . . . . . . . . .  B  ADDR  00B6H  NOT USED
